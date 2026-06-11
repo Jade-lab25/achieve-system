@@ -217,7 +217,6 @@ export function useAppState() {
 
       const record = prev.timeRecords.find(r => r.id === todo.timingRecordId);
       const durationSeconds = record ? (now.getTime() - record.startTimestamp) / 1000 : 0;
-      const durationMinutes = durationSeconds / 60;
 
       return {
         ...prev,
@@ -226,7 +225,7 @@ export function useAppState() {
           isTiming: false,
           timingStartTime: null,
           timingRecordId: null,
-          totalTime: t.totalTime + durationMinutes,
+          totalTime: t.totalTime + durationSeconds,
         } : t),
         timeRecords: prev.timeRecords.map(r => 
           r.id === todo.timingRecordId ? { ...r, endTime } : r

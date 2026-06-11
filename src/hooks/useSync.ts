@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { syncAll, fetchAll } from '../supabase/database';
-import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, Inspiration, UserStats } from '../supabase/types';
+import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, Inspiration } from '../types';
+import type { UserStats } from '../supabase/types';
 
 interface SyncState {
   isOnline: boolean;
@@ -69,9 +70,24 @@ export function useSync(userId: string | null) {
           inspirations: parsed.inspirations?.length || 0,
           totalAchievements: parsed.totalAchievements || 0
         });
+
+        const timeRecords: TimeRecord[] = parsed.timeRecords || [];
+        const todos: Todo[] = parsed.todos || [];
+        
+        const recalculatedTodos = todos.map((todo: Todo) => {
+          const todoRecords = timeRecords.filter((r: TimeRecord) => r.todoId === todo.id && r.endTime);
+          const totalSeconds = todoRecords.reduce((sum: number, record: TimeRecord) => {
+            if (record.startTimestamp && record.endTime) {
+              const endTime = new Date(record.endTime).getTime();
+              return sum + (endTime - record.startTimestamp) / 1000;
+            }
+            return sum;
+          }, 0);
+          return { ...todo, totalTime: totalSeconds };
+        });
         
         return {
-          todos: parsed.todos || [],
+          todos: recalculatedTodos,
           checkInProjects: parsed.checkInProjects || [],
           checkInRecords: parsed.checkInRecords || [],
           timeRecords: parsed.timeRecords || [],
@@ -204,8 +220,23 @@ export function useSync(userId: string | null) {
     try {
       const { data, success } = await fetchAll(userId);
       if (success && data) {
+        const timeRecords: TimeRecord[] = data.timeRecords || [];
+        const todos: Todo[] = data.todos || [];
+        
+        const recalculatedTodos = todos.map((todo: Todo) => {
+          const todoRecords = timeRecords.filter((r: TimeRecord) => r.todoId === todo.id && r.endTime);
+          const totalSeconds = todoRecords.reduce((sum: number, record: TimeRecord) => {
+            if (record.startTimestamp && record.endTime) {
+              const endTime = new Date(record.endTime).getTime();
+              return sum + (endTime - record.startTimestamp) / 1000;
+            }
+            return sum;
+          }, 0);
+          return { ...todo, totalTime: totalSeconds };
+        });
+
         saveLocalData({
-          todos: data.todos,
+          todos: recalculatedTodos,
           checkInProjects: data.checkInProjects,
           checkInRecords: data.checkInRecords,
           timeRecords: data.timeRecords,
@@ -213,10 +244,10 @@ export function useSync(userId: string | null) {
           inspirations: data.inspirations,
           userStats: data.userStats || {}
         });
-        return data;
+        return { ...data, todos: recalculatedTodos };
       }
     } catch (error) {
-      console.error('Failed to fetch from cloud:', error);
+      console.error('[Sync] fetchFromCloud error:', error);
     }
 
     return loadLocalData();

@@ -387,12 +387,12 @@ export const userStats = {
 };
 
 export const syncAll = async (userId: string, data: {
-  todos: Todo[];
-  checkInProjects: CheckInProject[];
-  checkInRecords: CheckInRecord[];
-  timeRecords: TimeRecord[];
-  achievementLogs: AchievementLog[];
-  inspirations: Inspiration[];
+  todos: any[];
+  checkInProjects: any[];
+  checkInRecords: any[];
+  timeRecords: any[];
+  achievementLogs: any[];
+  inspirations: any[];
   userStats: Partial<UserStats>;
 }) => {
   const errors: string[] = [];

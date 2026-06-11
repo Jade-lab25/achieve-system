@@ -125,10 +125,10 @@ export function TodoList({ todos, onAdd, onComplete, onDelete, onClearCompleted,
     addToast('计时结束，已保存', 'success');
   };
 
-  const formatDuration = (totalMinutes: number) => {
-    const hours = Math.floor(totalMinutes / 60);
-    const mins = Math.floor(totalMinutes % 60);
-    const secs = Math.floor((totalMinutes % 1) * 60);
+  const formatDuration = (totalSeconds: number) => {
+    const hours = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    const secs = Math.floor(totalSeconds % 60);
     return `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
   };
 
