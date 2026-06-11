@@ -26,7 +26,7 @@ export function Navigation({ activeTab, onTabChange }: NavigationProps) {
             <h1 className="text-base md:text-xl font-bold text-gray-800">工作状态记录</h1>
           </div>
           
-          <div className="flex items-center gap-1 overflow-x-auto hide-scrollbar">
+          <div className="hidden md:flex items-center gap-1 lg:flex overflow-x-auto hide-scrollbar">
             {tabs.map(tab => (
               <button
                 key={tab.id}

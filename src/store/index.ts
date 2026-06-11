@@ -350,10 +350,12 @@ export function useAppState() {
   }, []);
 
   const addInspiration = useCallback((content: string) => {
+    const now = new Date().toISOString();
     const inspiration: Inspiration = {
       id: Date.now().toString(),
       content,
-      createdAt: new Date().toISOString(),
+      createdAt: now,
+      updatedAt: now,
     };
     setState(prev => ({ ...prev, inspirations: [inspiration, ...prev.inspirations] }));
   }, []);
@@ -365,7 +367,7 @@ export function useAppState() {
   const updateInspiration = useCallback((id: string, content: string) => {
     setState(prev => ({
       ...prev,
-      inspirations: prev.inspirations.map(i => i.id === id ? { ...i, content } : i),
+      inspirations: prev.inspirations.map(i => i.id === id ? { ...i, content, updatedAt: new Date().toISOString(), synced_at: undefined } : i),
     }));
   }, []);
 
@@ -426,10 +428,26 @@ export function useAppState() {
         .reduce((sum: number, log: AchievementLog) => sum + (log.points || 0), 0);
       
       const totalAchievements = totalEarned - totalSpent;
+
+      const timeRecords: TimeRecord[] = parsed.timeRecords || [];
+      const todos: Todo[] = parsed.todos || [];
+      
+      const recalculatedTodos = todos.map((todo: Todo) => {
+        const todoRecords = timeRecords.filter((r: TimeRecord) => r.todoId === todo.id && r.endTime);
+        const totalSeconds = todoRecords.reduce((sum: number, record: TimeRecord) => {
+          if (record.startTimestamp && record.endTime) {
+            const endTime = new Date(record.endTime).getTime();
+            return sum + (endTime - record.startTimestamp) / 1000;
+          }
+          return sum;
+        }, 0);
+        return { ...todo, totalTime: totalSeconds };
+      });
       
       setState({ 
         ...initialState, 
         ...parsed,
+        todos: recalculatedTodos,
         totalAchievements,
         totalEarned,
         totalSpent

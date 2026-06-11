@@ -35,7 +35,8 @@ export function TimeRecorder({ records, selectedDate, onSelectDate, onStartTimer
   }, []);
 
   const filteredRecords = records.filter(record => {
-    const recordDate = new Date(record.createdAt).toISOString().split('T')[0];
+    const date = new Date(record.createdAt);
+    const recordDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
     return recordDate === selectedDate;
   });
 
@@ -109,14 +110,14 @@ export function TimeRecorder({ records, selectedDate, onSelectDate, onStartTimer
     }
   };
 
-  const formatDate = (dateStr: string) => {
+  const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
     return date.toLocaleString('zh-CN', { 
       month: '2-digit', 
       day: '2-digit', 
       hour: '2-digit', 
       minute: '2-digit',
-      second: '2-digit'
+      timeZone: 'Asia/Shanghai'
     });
   };
 
@@ -245,9 +246,16 @@ export function TimeRecorder({ records, selectedDate, onSelectDate, onStartTimer
                         <h4 className={`font-medium ${isRunning ? 'text-red-600' : 'text-gray-800'}`}>
                           {record.content}
                         </h4>
-                        <p className="text-sm text-gray-500 mt-1">
-                          开始: {formatDate(record.createdAt)}
-                        </p>
+                        <div className="flex items-center justify-between mt-1">
+                          <span className="text-sm text-gray-500">
+                            开始: {formatTime(record.createdAt)}
+                          </span>
+                          {!isRunning && record.endTime && (
+                            <span className="text-sm text-gray-500">
+                              结束: {formatTime(record.endTime)}
+                            </span>
+                          )}
+                        </div>
                         <div className="flex items-center gap-2 mt-2">
                           <span className={`text-sm flex items-center gap-1 ${isRunning ? 'text-red-600' : 'text-purple-600'}`}>
                             <Clock className="w-4 h-4" />

@@ -57,6 +57,7 @@ export interface Inspiration {
   id: string;
   content: string;
   createdAt: string;
+  updatedAt: string;
 }
 
 export interface DailyStats {

@@ -31,7 +31,8 @@ export function DateDetail({ activeTab, date, checkInRecords, timeRecords, achie
       day: '2-digit', 
       hour: '2-digit', 
       minute: '2-digit',
-      second: '2-digit'
+      second: '2-digit',
+      timeZone: 'Asia/Shanghai'
     });
   };
 
@@ -167,7 +168,7 @@ export function DateDetail({ activeTab, date, checkInRecords, timeRecords, achie
                 <div className="flex items-center gap-2">
                   <Clock className={`w-4 h-4 ${!record.endTime ? 'text-purple-500' : 'text-gray-400'}`} />
                   <span className={`text-sm font-medium ${!record.endTime ? 'text-purple-600' : 'text-gray-600'}`}>
-                    {record.startTime} - {record.endTime || '进行中'}
+                    {formatTimestamp(record.startTime)} - {record.endTime ? formatTimestamp(record.endTime) : '进行中'}
                   </span>
                 </div>
                 <div className="flex-1">

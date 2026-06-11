@@ -159,6 +159,49 @@ export const checkInProject = {
       .delete()
       .eq('id', id);
     return { error };
+  },
+
+  sync: async (userId: string, localProjects: CheckInProject[]) => {
+    const { data: remoteProjects, error } = await supabase
+      .from('check_in_projects')
+      .select('*')
+      .eq('user_id', userId);
+
+    if (error) return { error };
+
+    const syncErrors: string[] = [];
+    const localIds = new Set(localProjects.map(p => p.id));
+
+    for (const remoteProject of remoteProjects || []) {
+      if (!localIds.has(remoteProject.id)) {
+        const { error: deleteError } = await supabase
+          .from('check_in_projects')
+          .delete()
+          .eq('id', remoteProject.id);
+        if (deleteError) syncErrors.push(deleteError.message);
+      }
+    }
+
+    for (const localProject of localProjects) {
+      const remoteProject = remoteProjects?.find(p => p.id === localProject.id);
+      const projectData = camelToSnake(localProject);
+
+      if (!remoteProject) {
+        const { error: insertError } = await supabase
+          .from('check_in_projects')
+          .insert({ ...projectData, user_id: userId, synced_at: new Date().toISOString() });
+        if (insertError) syncErrors.push(insertError.message);
+      } else if (localProject.synced_at && remoteProject.synced_at && 
+                 new Date(localProject.synced_at) > new Date(remoteProject.synced_at)) {
+        const { error: updateError } = await supabase
+          .from('check_in_projects')
+          .update({ ...projectData, synced_at: new Date().toISOString() })
+          .eq('id', localProject.id);
+        if (updateError) syncErrors.push(updateError.message);
+      }
+    }
+
+    return { error: syncErrors.length > 0 ? new Error(syncErrors.join(', ')) : null };
   }
 };
 
@@ -301,8 +344,7 @@ export const inspiration = {
           .from('inspirations')
           .insert({ ...inspData, user_id: userId, synced_at: new Date().toISOString() });
         if (insertError) syncErrors.push(insertError.message);
-      } else if (localInsp.synced_at && remoteInsp.synced_at && 
-                 new Date(localInsp.synced_at) > new Date(remoteInsp.synced_at)) {
+      } else if (!localInsp.synced_at || (remoteInsp.synced_at && new Date(localInsp.synced_at) > new Date(remoteInsp.synced_at))) {
         const { error: updateError } = await supabase
           .from('inspirations')
           .update({ ...inspData, synced_at: new Date().toISOString() })
@@ -360,9 +402,9 @@ export const syncAll = async (userId: string, data: {
     if (error) errors.push(`Todos sync error: ${error.message}`);
   }
 
-  for (const project of data.checkInProjects) {
-    const { error } = await checkInProject.insert({ ...project, user_id: userId });
-    if (error && !error.message.includes('duplicate key')) errors.push(`Project sync error: ${error.message}`);
+  if (data.checkInProjects.length > 0) {
+    const { error } = await checkInProject.sync(userId, data.checkInProjects);
+    if (error) errors.push(`Project sync error: ${error.message}`);
   }
 
   for (const record of data.checkInRecords) {

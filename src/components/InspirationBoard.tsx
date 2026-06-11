@@ -172,9 +172,16 @@ export function InspirationBoard({ inspirations, onAdd, onDelete, onUpdate, onMo
                   ) : (
                     <>
                       <p className="text-sm text-gray-800 whitespace-pre-wrap">{inspiration.content}</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        添加于 {formatTime(inspiration.createdAt)}
-                      </p>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <span className="text-xs text-gray-400">
+                          添加于 {formatTime(inspiration.createdAt)}
+                        </span>
+                        {inspiration.updatedAt && inspiration.updatedAt !== inspiration.createdAt && (
+                          <span className="text-xs text-gray-400">
+                            • 修改于 {formatTime(inspiration.updatedAt)}
+                          </span>
+                        )}
+                      </div>
                     </>
                   )}
                 </div>

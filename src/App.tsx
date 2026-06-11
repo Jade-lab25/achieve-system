@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useAppState } from './store';
 import { Navigation } from './components/Navigation';
+import { BottomNavigation } from './components/BottomNavigation';
 import { TodoList } from './components/TodoList';
 import { CheckInSystem } from './components/CheckInSystem';
 import { TimeRecorder } from './components/TimeRecorder';
@@ -14,9 +15,11 @@ import { useSync } from './hooks/useSync';
 import { auth as supabaseAuth } from './supabase/database';
 
 type TabType = 'todo' | 'checkin' | 'time' | 'achievement' | 'inspiration' | 'sync';
+type BottomTabType = 'todos' | 'checkin' | 'inspirations' | 'timerecords' | 'settings';
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>('todo');
+  const [activeBottomTab, setActiveBottomTab] = useState<BottomTabType>('todos');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [userId, setUserId] = useState<string | null>(null);
@@ -83,6 +86,18 @@ function App() {
     setUserId(null);
     setSyncMessage('已退出登录');
     setTimeout(() => setSyncMessage(''), 3000);
+  };
+
+  const handleBottomTabChange = (tab: BottomTabType) => {
+    setActiveBottomTab(tab);
+    const tabMap: Record<BottomTabType, TabType> = {
+      todos: 'todo',
+      checkin: 'checkin',
+      inspirations: 'inspiration',
+      timerecords: 'time',
+      settings: 'sync',
+    };
+    setActiveTab(tabMap[tab]);
   };
 
   const recordsByDate = getRecordsByDate(selectedDate);
@@ -266,7 +281,7 @@ function App() {
 
       <Navigation activeTab={activeTab} onTabChange={setActiveTab} />
       
-      <main className="max-w-7xl mx-auto px-3 md:px-4 py-3 md:py-6">
+      <main className="max-w-7xl mx-auto px-3 md:px-4 py-3 md:py-6 pb-20 md:pb-0">
         {renderContent()}
         
         {activeTab !== 'todo' && activeTab !== 'inspiration' && (
@@ -283,6 +298,11 @@ function App() {
           </div>
         )}
       </main>
+
+      <BottomNavigation 
+        activeTab={activeBottomTab} 
+        onTabChange={handleBottomTabChange} 
+      />
     </div>
   );
 }
