@@ -258,13 +258,16 @@ export function useAppState() {
       const project = prev.checkInProjects.find(p => p.id === projectId);
       if (!project) return prev;
 
+      const now = new Date();
+      const localISOString = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace('T', ' ');
+      
       const record: CheckInRecord = {
         id: Date.now().toString(),
         projectId: project.id,
         projectName: project.name,
         type: project.type,
         points: project.points,
-        createdAt: new Date().toISOString(),
+        createdAt: localISOString,
       };
 
       const log: AchievementLog = {
@@ -272,7 +275,7 @@ export function useAppState() {
         type: project.type,
         title: project.name,
         points: project.type === 'task' ? project.points : -project.points,
-        createdAt: record.createdAt,
+        createdAt: localISOString,
       };
 
       const pointsChange = project.type === 'task' ? project.points : -project.points;
@@ -458,19 +461,16 @@ export function useAppState() {
   }, []);
 
   const getDailyStats = useCallback((date: string): { totalAchievements: number; checkInCount: number } => {
-    const dayStart = new Date(date);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(date);
-    dayEnd.setHours(23, 59, 59, 999);
+    const targetDate = date.slice(0, 10);
 
     const dayLogs = state.achievementLogs.filter(log => {
-      const logDate = new Date(log.createdAt);
-      return logDate >= dayStart && logDate <= dayEnd;
+      const logDate = log.createdAt.slice(0, 10);
+      return logDate === targetDate;
     });
 
     const taskCheckIns = state.checkInRecords.filter(record => {
-      const recordDate = new Date(record.createdAt);
-      return recordDate >= dayStart && recordDate <= dayEnd && record.type === 'task';
+      const recordDate = record.createdAt.slice(0, 10);
+      return recordDate === targetDate && record.type === 'task';
     });
 
     return {
@@ -480,50 +480,45 @@ export function useAppState() {
   }, [state.achievementLogs, state.checkInRecords]);
 
   const getRecordsByDate = useCallback((date: string) => {
-    const dayStart = new Date(date);
-    dayStart.setHours(0, 0, 0, 0);
-    const dayEnd = new Date(date);
-    dayEnd.setHours(23, 59, 59, 999);
+    const targetDate = date.slice(0, 10);
 
     return {
       checkInRecords: state.checkInRecords.filter(record => {
-        const recordDate = new Date(record.createdAt);
-        return recordDate >= dayStart && recordDate <= dayEnd;
+        const recordDate = record.createdAt.slice(0, 10);
+        return recordDate === targetDate;
       }),
       timeRecords: state.timeRecords.filter(record => {
-        const recordDate = new Date(record.createdAt);
-        return recordDate >= dayStart && recordDate <= dayEnd;
+        const recordDate = record.createdAt.slice(0, 10);
+        return recordDate === targetDate;
       }),
       achievementLogs: state.achievementLogs.filter(log => {
-        const logDate = new Date(log.createdAt);
-        return logDate >= dayStart && logDate <= dayEnd;
+        const logDate = log.createdAt.slice(0, 10);
+        return logDate === targetDate;
       }),
     };
   }, [state.checkInRecords, state.timeRecords, state.achievementLogs]);
 
   const getMonthlyStats = useCallback((date: string): { totalAchievements: number; checkInCount: number; todoCount: number; timeRecordCount: number } => {
-    const dateObj = new Date(date);
-    const monthStart = new Date(dateObj.getFullYear(), dateObj.getMonth(), 1);
-    const monthEnd = new Date(dateObj.getFullYear(), dateObj.getMonth() + 1, 0, 23, 59, 59, 999);
+    const targetYearMonth = date.slice(0, 7);
 
     const monthLogs = state.achievementLogs.filter(log => {
-      const logDate = new Date(log.createdAt);
-      return logDate >= monthStart && logDate <= monthEnd;
+      const logYearMonth = log.createdAt.slice(0, 7);
+      return logYearMonth === targetYearMonth;
     });
 
     const taskCheckIns = state.checkInRecords.filter(record => {
-      const recordDate = new Date(record.createdAt);
-      return recordDate >= monthStart && recordDate <= monthEnd && record.type === 'task';
+      const recordYearMonth = record.createdAt.slice(0, 7);
+      return recordYearMonth === targetYearMonth && record.type === 'task';
     });
 
     const monthTodos = state.todos.filter(todo => {
-      const todoDate = new Date(todo.createdAt);
-      return todoDate >= monthStart && todoDate <= monthEnd;
+      const todoYearMonth = todo.createdAt.slice(0, 7);
+      return todoYearMonth === targetYearMonth;
     });
 
     const monthTimeRecords = state.timeRecords.filter(record => {
-      const recordDate = new Date(record.createdAt);
-      return recordDate >= monthStart && recordDate <= monthEnd && record.endTime;
+      const recordYearMonth = record.createdAt.slice(0, 7);
+      return recordYearMonth === targetYearMonth && record.endTime;
     });
 
     return {
@@ -535,28 +530,26 @@ export function useAppState() {
   }, [state.achievementLogs, state.checkInRecords, state.timeRecords, state.todos]);
 
   const getYearlyStats = useCallback((date: string): { totalAchievements: number; checkInCount: number; todoCount: number; timeRecordCount: number } => {
-    const dateObj = new Date(date);
-    const yearStart = new Date(dateObj.getFullYear(), 0, 1);
-    const yearEnd = new Date(dateObj.getFullYear(), 11, 31, 23, 59, 59, 999);
+    const targetYear = date.slice(0, 4);
 
     const yearLogs = state.achievementLogs.filter(log => {
-      const logDate = new Date(log.createdAt);
-      return logDate >= yearStart && logDate <= yearEnd;
+      const logYear = log.createdAt.slice(0, 4);
+      return logYear === targetYear;
     });
 
     const taskCheckIns = state.checkInRecords.filter(record => {
-      const recordDate = new Date(record.createdAt);
-      return recordDate >= yearStart && recordDate <= yearEnd && record.type === 'task';
+      const recordYear = record.createdAt.slice(0, 4);
+      return recordYear === targetYear && record.type === 'task';
     });
 
     const yearTodos = state.todos.filter(todo => {
-      const todoDate = new Date(todo.createdAt);
-      return todoDate >= yearStart && todoDate <= yearEnd;
+      const todoYear = todo.createdAt.slice(0, 4);
+      return todoYear === targetYear;
     });
 
     const yearTimeRecords = state.timeRecords.filter(record => {
-      const recordDate = new Date(record.createdAt);
-      return recordDate >= yearStart && recordDate <= yearEnd && record.endTime;
+      const recordYear = record.createdAt.slice(0, 4);
+      return recordYear === targetYear && record.endTime;
     });
 
     return {
