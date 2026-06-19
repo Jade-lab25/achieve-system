@@ -17,7 +17,13 @@ export function AchievementSystem({ logs }: AchievementSystemProps) {
   const totalAchievements = totalEarned - totalSpent;
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleString('zh-CN', { 
+      month: 'short', 
+      day: 'numeric', 
+      hour: '2-digit', 
+      minute: '2-digit',
+      timeZone: 'Asia/Shanghai'
+    });
   };
 
   const getTypeIcon = (type: AchievementLog['type']) => {
