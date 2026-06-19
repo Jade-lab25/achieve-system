@@ -259,9 +259,7 @@ export function useAppState() {
       if (!project) return prev;
 
       const now = new Date();
-      const localDate = now.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
-      const localTime = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      const localDateTime = `${localDate} ${localTime}`;
+      const localDateTime = now.toISOString();
       
       const record: CheckInRecord = {
         id: Date.now().toString(),

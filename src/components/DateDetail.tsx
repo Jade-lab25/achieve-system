@@ -16,12 +16,22 @@ interface DateDetailProps {
 export function DateDetail({ activeTab, date, checkInRecords, timeRecords, achievementLogs, totalAchievements, checkInCount }: DateDetailProps) {
   const formatTime = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleTimeString('zh-CN', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      timeZone: 'Asia/Shanghai'
+    });
   };
 
   const formatDate = (dateStr: string) => {
     const date = new Date(dateStr);
-    return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' });
+    return date.toLocaleDateString('zh-CN', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric', 
+      weekday: 'long',
+      timeZone: 'Asia/Shanghai'
+    });
   };
 
   const formatTimestamp = (timestamp: string) => {
