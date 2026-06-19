@@ -259,7 +259,9 @@ export function useAppState() {
       if (!project) return prev;
 
       const now = new Date();
-      const localISOString = new Date(now.getTime() - now.getTimezoneOffset() * 60000).toISOString().slice(0, 19).replace('T', ' ');
+      const localDate = now.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' }).replace(/\//g, '-');
+      const localTime = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const localDateTime = `${localDate} ${localTime}`;
       
       const record: CheckInRecord = {
         id: Date.now().toString(),
@@ -267,7 +269,7 @@ export function useAppState() {
         projectName: project.name,
         type: project.type,
         points: project.points,
-        createdAt: localISOString,
+        createdAt: localDateTime,
       };
 
       const log: AchievementLog = {
@@ -275,7 +277,7 @@ export function useAppState() {
         type: project.type,
         title: project.name,
         points: project.type === 'task' ? project.points : -project.points,
-        createdAt: localISOString,
+        createdAt: localDateTime,
       };
 
       const pointsChange = project.type === 'task' ? project.points : -project.points;
