@@ -465,7 +465,10 @@ export function useAppState() {
 
     const getLocalDate = (dateStr: string) => {
       const date = new Date(dateStr);
-      return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Shanghai' }).replace(/\//g, '-');
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     };
 
     const dayLogs = state.achievementLogs.filter(log => {
@@ -489,7 +492,10 @@ export function useAppState() {
 
     const getLocalDate = (dateStr: string) => {
       const date = new Date(dateStr);
-      return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Shanghai' }).replace(/\//g, '-');
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
     };
 
     return {
@@ -513,7 +519,9 @@ export function useAppState() {
 
     const getLocalYearMonth = (dateStr: string) => {
       const date = new Date(dateStr);
-      return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', timeZone: 'Asia/Shanghai' }).replace(/\//g, '-').slice(0, 7);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      return `${year}-${month}`;
     };
 
     const monthLogs = state.achievementLogs.filter(log => {
@@ -549,7 +557,7 @@ export function useAppState() {
 
     const getLocalYear = (dateStr: string) => {
       const date = new Date(dateStr);
-      return date.toLocaleDateString('zh-CN', { year: 'numeric', timeZone: 'Asia/Shanghai' });
+      return String(date.getFullYear());
     };
 
     const yearLogs = state.achievementLogs.filter(log => {
