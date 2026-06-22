@@ -127,7 +127,8 @@ export function InspirationBoard({ inspirations, onAdd, onDelete, onUpdate, onMo
               onKeyDown={handleKeyDown}
               placeholder="记录你的灵感（Shift+Enter换行）..."
               rows={3}
-              className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 resize-none"
+              className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 resize-y min-h-[80px] max-h-[300px]"
+              style={{ resize: 'vertical' }}
             />
             <button
               type="submit"
@@ -158,7 +159,8 @@ export function InspirationBoard({ inspirations, onAdd, onDelete, onUpdate, onMo
                         value={editingValue}
                         onChange={(e) => setEditingValue(e.target.value)}
                         rows={3}
-                        className="w-full px-2 py-1 border border-yellow-300 rounded focus:outline-none focus:ring-2 focus:ring-yellow-500 resize-none"
+                        className="w-full px-2 py-1 border border-yellow-300 rounded focus:outline-none focus:ring-2 focus:ring-yellow-500 resize-y min-h-[80px] max-h-[300px]"
+                        style={{ resize: 'vertical' }}
                       />
                       <div className="flex gap-2">
                         <button
