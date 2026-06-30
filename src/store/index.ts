@@ -697,8 +697,20 @@ export function useAppState() {
     return state.shopItems.filter(item => item.category === category);
   }, [state.shopItems]);
 
+  /**
+   * 同步数据后更新整个状态
+   * 用于从云端拉取数据后，替换本地 state
+   */
+  const hydrateState = useCallback((newState: Partial<AppState>) => {
+    setState(prev => ({
+      ...prev,
+      ...newState,
+    }));
+  }, []);
+
   return {
     state,
+    hydrateState,
     addTodo,
     completeTodo,
     deleteTodo,

@@ -33,7 +33,11 @@ function markSynced<T extends Syncable>(item: T, syncedAt: string): T {
   };
 }
 
-export function useSync(userId: string | null) {
+interface SyncOptions {
+  onDataFetched?: (data: any) => void;
+}
+
+export function useSync(userId: string | null, options?: SyncOptions) {
   const [syncState, setSyncState] = useState<SyncState>({
     isOnline: navigator.onLine,
     isSyncing: false,
@@ -193,6 +197,11 @@ export function useSync(userId: string | null) {
 
         saveLocalData(mergedData);
 
+        // ✅ 同步完成后也更新 React state（清除 is_dirty 标记等）
+        if (options?.onDataFetched) {
+          options.onDataFetched(mergedData);
+        }
+
         const syncDuration = ((Date.now() - syncStartTime) / 1000).toFixed(1);
         setSyncState(prev => ({
           ...prev,
@@ -222,7 +231,7 @@ export function useSync(userId: string | null) {
     }
 
     return null;
-  }, [loadLocalData, saveLocalData]);
+  }, [loadLocalData, saveLocalData, options]);
 
   const fetchFromCloud = useCallback(async (userId: string): Promise<SyncData | null> => {
     if (!navigator.onLine) {
@@ -263,7 +272,14 @@ export function useSync(userId: string | null) {
           userStats: { ...localData.userStats, ...data.userStats }
         };
 
+        // 保存到 localStorage
         saveLocalData(mergedData);
+
+        // ✅ 回调更新 React state（关键修复）
+        if (options?.onDataFetched) {
+          options.onDataFetched(mergedData);
+        }
+
         return mergedData;
       }
     } catch (error) {
@@ -271,7 +287,7 @@ export function useSync(userId: string | null) {
     }
 
     return loadLocalData();
-  }, [loadLocalData, saveLocalData]);
+  }, [loadLocalData, saveLocalData, options]);
 
   const syncOnChange = useCallback(async (userId: string | null, data: SyncData) => {
     saveLocalData(data);

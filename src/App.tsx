@@ -55,13 +55,30 @@ function App() {
     getRecordsByDate,
     getMonthlyStats,
     getYearlyStats,
+    hydrateState,
     // 成就商店
     addShopItem,
     deleteShopItem,
     purchaseShopItem,
   } = useAppState();
 
-  const { syncState, fetchFromCloud, performSync } = useSync(userId);
+  // 同步完成后更新 React state（关键修复：让界面立即显示云端数据）
+  const handleDataFetched = (data: any) => {
+    hydrateState({
+      todos: data.todos,
+      checkInProjects: data.checkInProjects,
+      checkInRecords: data.checkInRecords,
+      timeRecords: data.timeRecords,
+      achievementLogs: data.achievementLogs,
+      inspirations: data.inspirations,
+      shopItems: data.shopItems,
+      totalAchievements: data.userStats?.total_achievements ?? 0,
+      totalEarned: data.userStats?.total_earned ?? 0,
+      totalSpent: data.userStats?.total_spent ?? 0,
+    });
+  };
+
+  const { syncState, fetchFromCloud, performSync } = useSync(userId, { onDataFetched: handleDataFetched });
 
   useEffect(() => {
     const checkAuth = async () => {
