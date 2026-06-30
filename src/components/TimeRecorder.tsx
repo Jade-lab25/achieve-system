@@ -218,7 +218,11 @@ export function TimeRecorder({ records, selectedDate, onSelectDate, onStartTimer
                 正在记录: {currentRecording.content}
               </p>
               <p className="text-2xl font-bold text-red-600 mt-2">
-                {formatDuration(elapsedTime)}
+                {formatDuration(
+                  currentRecording.startTimestamp
+                    ? Math.floor((Date.now() - currentRecording.startTimestamp) / 1000)
+                    : elapsedTime
+                )}
               </p>
             </div>
           )}
