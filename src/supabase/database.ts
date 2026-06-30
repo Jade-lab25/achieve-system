@@ -119,11 +119,25 @@ async function batchInsert<T extends { id: string }>(
         .insert(recordsToInsert)
         .select();
 
-      if (error && !error.message.includes('duplicate key')) {
-        throw error;
-      }
+      if (error) {
+        if (error.message.includes('duplicate key')) {
+          // ✅ 记录已存在于云端，从数据库获取其 synced_at 时间戳
+          //    防止这些记录因无法插入而永远保持 dirty 状态导致无限同步循环
+          const ids = batch.map(r => (r as any).id);
+          const { data: existing } = await supabase
+            .from(tableName)
+            .select('*')
+            .in('id', ids)
+            .eq('user_id', userId);
 
-      if (data) {
+          if (existing) {
+            allInserted.push(...existing);
+          }
+          console.log(`[DB] ${tableName}: ${existing?.length || 0} records already exist in cloud, marked as synced`);
+        } else {
+          throw error;
+        }
+      } else if (data) {
         allInserted.push(...data);
       }
     }
