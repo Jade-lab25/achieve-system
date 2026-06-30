@@ -14,6 +14,7 @@ const initialState: AppState = {
   totalAchievements: 0,
   totalEarned: 0,
   totalSpent: 0,
+  userStats: {},
 };
 
 /**

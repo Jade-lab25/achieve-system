@@ -105,4 +105,9 @@ export interface AppState {
   totalAchievements: number;
   totalEarned: number;
   totalSpent: number;
+  userStats: {
+    total_achievements?: number;
+    total_earned?: number;
+    total_spent?: number;
+  };
 }

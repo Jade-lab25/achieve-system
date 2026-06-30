@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { syncAll, fetchAll } from '../supabase/database';
 import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, Inspiration, Syncable, ShopItem } from '../types';
 import type { UserStats } from '../supabase/types';
@@ -38,6 +38,7 @@ interface SyncOptions {
 }
 
 export function useSync(userId: string | null, options?: SyncOptions) {
+  const syncTimeoutRef = useRef<number | null>(null);
   const [syncState, setSyncState] = useState<SyncState>({
     isOnline: navigator.onLine,
     isSyncing: false,
@@ -45,27 +46,6 @@ export function useSync(userId: string | null, options?: SyncOptions) {
     syncStatus: 'idle',
     syncMessage: ''
   });
-
-  useEffect(() => {
-    const handleOnline = () => {
-      setSyncState(prev => ({ ...prev, isOnline: true }));
-      if (userId) {
-        performSync(userId);
-      }
-    };
-
-    const handleOffline = () => {
-      setSyncState(prev => ({ ...prev, isOnline: false }));
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [userId]);
 
   const loadLocalData = useCallback((): SyncData => {
     try {
@@ -293,13 +273,43 @@ export function useSync(userId: string | null, options?: SyncOptions) {
 
   const syncOnChange = useCallback(async (userId: string | null, data: SyncData) => {
     saveLocalData(data);
-    
+
     if (userId && navigator.onLine) {
-      setTimeout(() => {
+      // ✅ 防抖：清除之前的定时器，防止快速连续操作触发多次同步
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+      syncTimeoutRef.current = window.setTimeout(() => {
         performSync(userId!);
-      }, 1000);
+      }, 1500);
     }
   }, [saveLocalData, performSync]);
+
+  // ✅ 在线/离线状态监听（放在 performSync 声明之后，避免声明前使用）
+  useEffect(() => {
+    const handleOnline = () => {
+      setSyncState(prev => ({ ...prev, isOnline: true }));
+      if (userId) {
+        performSync(userId);
+      }
+    };
+
+    const handleOffline = () => {
+      setSyncState(prev => ({ ...prev, isOnline: false }));
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      // 组件卸载时清除定时器
+      if (syncTimeoutRef.current) {
+        clearTimeout(syncTimeoutRef.current);
+      }
+    };
+  }, [userId, performSync]);
 
   return {
     syncState,

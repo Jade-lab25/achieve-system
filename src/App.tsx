@@ -88,7 +88,7 @@ function App() {
     });
   };
 
-  const { syncState, fetchFromCloud, performSync } = useSync(userId, { onDataFetched: handleDataFetched });
+  const { syncState, fetchFromCloud, performSync, syncOnChange } = useSync(userId, { onDataFetched: handleDataFetched });
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -101,6 +101,11 @@ function App() {
     };
     checkAuth();
   }, [fetchFromCloud]);
+
+  // ✅ 关键修复：当 state 变化时触发同步
+  useEffect(() => {
+    syncOnChange(userId, state);
+  }, [userId, state, syncOnChange]);
 
   const handleLogin = async () => {
     const user = await supabaseAuth.getCurrentUser();
