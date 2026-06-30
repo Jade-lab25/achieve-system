@@ -40,7 +40,15 @@ export function TimeRecorder({ records, selectedDate, onSelectDate, onStartTimer
     return recordDate === selectedDate;
   });
 
-  const currentRecording = filteredRecords.find(r => !r.endTime) || null;
+  // ✅ 从所有记录中找正在计时的，而不是只看当天的
+  const currentRecording = records.find(r => !r.endTime) || null;
+
+  // 每秒强制刷新，让列表中的计时器也能实时更新
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const interval = setInterval(() => setTick(t => t + 1), 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     let interval: ReturnType<typeof setInterval>;
