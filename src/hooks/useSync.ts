@@ -37,6 +37,7 @@ interface SyncOptions {
 export function useSync(userId: string | null, options?: SyncOptions) {
   const syncTimeoutRef = useRef<number | null>(null);
   const isSyncingRef = useRef<boolean>(false);
+  const messageTimeoutRef = useRef<number | null>(null);
   const [syncState, setSyncState] = useState<SyncState>({
     isOnline: navigator.onLine,
     isSyncing: false,
@@ -310,6 +311,23 @@ export function useSync(userId: string | null, options?: SyncOptions) {
     }
   }, [saveLocalData, performSync]);
 
+  // ✅ 同步消息 5 秒后自动消失
+  useEffect(() => {
+    if (syncState.syncStatus === 'synced' || syncState.syncStatus === 'error') {
+      if (messageTimeoutRef.current) {
+        clearTimeout(messageTimeoutRef.current);
+      }
+      messageTimeoutRef.current = window.setTimeout(() => {
+        setSyncState(prev => ({ ...prev, syncMessage: '', syncStatus: 'idle' }));
+      }, 5000);
+    }
+    return () => {
+      if (messageTimeoutRef.current) {
+        clearTimeout(messageTimeoutRef.current);
+      }
+    };
+  }, [syncState.syncStatus, syncState.syncMessage]);
+
   // ✅ 在线/离线状态监听（放在 performSync 声明之后，避免声明前使用）
   useEffect(() => {
     const handleOnline = () => {
@@ -332,6 +350,9 @@ export function useSync(userId: string | null, options?: SyncOptions) {
       // 组件卸载时清除定时器
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
+      }
+      if (messageTimeoutRef.current) {
+        clearTimeout(messageTimeoutRef.current);
       }
     };
   }, [userId, performSync]);
