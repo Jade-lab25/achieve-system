@@ -287,7 +287,7 @@ export function useSync(userId: string | null) {
   };
 }
 
-function mergeData<T extends { id: string; synced_at?: string | null; is_dirty?: boolean }>(
+function mergeData<T extends { id: string; synced_at?: string | null; is_dirty?: boolean; created_at?: string }>(
   local: T[],
   remote: T[],
   syncedAt: string
@@ -321,5 +321,10 @@ function mergeData<T extends { id: string; synced_at?: string | null; is_dirty?:
     }
   });
 
-  return merged;
+  // 按创建时间倒序排列（确保最新的记录在前面）
+  return merged.sort((a, b) => {
+    const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+    return timeB - timeA;
+  });
 }
