@@ -1,7 +1,7 @@
 import { supabase } from './client';
 import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, Inspiration, UserStats } from './types';
 import type { ShopItem } from '../types';
-import { isItemDirty, markSynced } from '../utils/syncState';
+import { isItemDirty, markSynced, prepareSyncPayload } from '../utils/syncState';
 
 function camelToSnake(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
@@ -19,6 +19,10 @@ function snakeToCamel(obj: any): any {
   for (const key of Object.keys(obj)) {
     const camelKey = key.replace(/_([a-z])/g, (_, letter) => letter.toUpperCase());
     result[camelKey] = obj[key];
+    // ✅ 同时保留 snake_case 字段，防止 isItemDirty 等检查因字段缺失而误判
+    if (camelKey !== key) {
+      result[key] = obj[key];
+    }
   }
   return result;
 }
@@ -58,12 +62,7 @@ async function syncTable<T extends { id: string; synced_at?: string | null; is_d
       const batch = itemsToSync.slice(i, i + batchSize);
       const now = new Date().toISOString();
 
-      const records = batch.map(item => ({
-        ...camelToSnake(item),
-        user_id: userId,
-        synced_at: now,
-        is_dirty: false,
-      }));
+      const records = batch.map(item => prepareSyncPayload(camelToSnake(item), userId, now));
 
       const { data, error } = await supabase
         .from(tableName)
@@ -108,11 +107,7 @@ async function batchInsert<T extends { id: string }>(
 
     for (let i = 0; i < records.length; i += batchSize) {
       const batch = records.slice(i, i + batchSize);
-      const recordsToInsert = batch.map(record => ({
-        ...camelToSnake(record),
-        user_id: userId,
-        synced_at: now,
-      }));
+      const recordsToInsert = batch.map(record => prepareSyncPayload(camelToSnake(record), userId, now));
 
       const { data, error } = await supabase
         .from(tableName)
