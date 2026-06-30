@@ -23,6 +23,15 @@ function snakeToCamel(obj: any): any {
   return result;
 }
 
+function sanitizeForSync<T extends Record<string, any>>(record: T, userId: string, syncedAt: string) {
+  const { is_dirty, isDirty, synced_at, syncedAt: _syncedAt, ...rest } = record as any;
+  return {
+    ...camelToSnake(rest),
+    user_id: userId,
+    synced_at: syncedAt,
+  };
+}
+
 /**
  * 通用表同步函数 - 批量 upsert 替代逐条操作
  * 性能提升: 1000条记录从 100秒 → 2秒
@@ -58,12 +67,7 @@ async function syncTable<T extends { id: string; synced_at?: string | null; is_d
       const batch = itemsToSync.slice(i, i + batchSize);
       const now = new Date().toISOString();
 
-      const records = batch.map(item => ({
-        ...camelToSnake(item),
-        user_id: userId,
-        synced_at: now,
-        is_dirty: false,
-      }));
+      const records = batch.map(item => sanitizeForSync(item, userId, now));
 
       const { data, error } = await supabase
         .from(tableName)
@@ -108,11 +112,7 @@ async function batchInsert<T extends { id: string }>(
 
     for (let i = 0; i < records.length; i += batchSize) {
       const batch = records.slice(i, i + batchSize);
-      const recordsToInsert = batch.map(record => ({
-        ...camelToSnake(record),
-        user_id: userId,
-        synced_at: now,
-      }));
+      const recordsToInsert = batch.map(record => sanitizeForSync(record, userId, now));
 
       const { data, error } = await supabase
         .from(tableName)
