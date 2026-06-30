@@ -183,15 +183,15 @@ export function useSync(userId: string | null, options?: SyncOptions) {
       if (success) {
         const { data: remoteData } = await fetchAll(userId);
 
-        const syncedAt = new Date().toISOString();
+        const syncedAtStr = new Date().toISOString();
         const mergedData: SyncData = {
-          todos: mergeData(localData.todos, remoteData.todos, syncedAt),
-          checkInProjects: mergeData(localData.checkInProjects, remoteData.checkInProjects, syncedAt),
-          checkInRecords: mergeData(localData.checkInRecords, remoteData.checkInRecords, syncedAt),
-          timeRecords: mergeData(localData.timeRecords, remoteData.timeRecords, syncedAt),
-          achievementLogs: mergeData(localData.achievementLogs, remoteData.achievementLogs, syncedAt),
-          inspirations: mergeData(localData.inspirations, remoteData.inspirations, syncedAt),
-          shopItems: mergeData(localData.shopItems, remoteData.shopItems, syncedAt),
+          todos: mergeData(localData.todos, remoteData.todos, syncedAtStr),
+          checkInProjects: mergeData(localData.checkInProjects, remoteData.checkInProjects, syncedAtStr),
+          checkInRecords: mergeData(localData.checkInRecords, remoteData.checkInRecords, syncedAtStr),
+          timeRecords: mergeData(localData.timeRecords, remoteData.timeRecords, syncedAtStr),
+          achievementLogs: mergeData(localData.achievementLogs, remoteData.achievementLogs, syncedAtStr),
+          inspirations: mergeData(localData.inspirations, remoteData.inspirations, syncedAtStr),
+          shopItems: mergeData(localData.shopItems, remoteData.shopItems, syncedAtStr),
           userStats: { ...localData.userStats, ...remoteData.userStats }
         };
 
@@ -208,7 +208,7 @@ export function useSync(userId: string | null, options?: SyncOptions) {
           isSyncing: false,
           syncStatus: 'synced',
           syncMessage: `同步成功，共同步 ${totalDirty} 条记录，耗时 ${syncDuration} 秒`,
-          lastSync: syncedAt
+          lastSync: syncedAtStr
         }));
 
         return mergedData;
@@ -309,13 +309,22 @@ export function useSync(userId: string | null, options?: SyncOptions) {
   };
 }
 
-function mergeData<T extends { id: string; synced_at?: string | null; is_dirty?: boolean; created_at?: string }>(
+function mergeData<T extends { id: string; synced_at?: string | null; syncedAt?: string | null; is_dirty?: boolean; isDirty?: boolean; created_at?: string; createdAt?: string }>(
   local: T[],
   remote: T[],
-  syncedAt: string
+  syncedAtStr: string
 ): T[] {
   const merged: T[] = [];
   const seen = new Set<string>();
+
+  // 字段兼容函数：同时支持 snake_case 和 camelCase
+  const getSyncedAt = (item: T): number => {
+    const val = (item as any).synced_at || (item as any).syncedAt;
+    return val ? new Date(val).getTime() : 0;
+  };
+  const isDirty = (item: T): boolean => {
+    return (item as any).is_dirty || (item as any).isDirty || false;
+  };
 
   // ✅ 云端优先：确保云端已同步的最新数据优先被采用
   [...remote, ...local].forEach(item => {
@@ -327,12 +336,12 @@ function mergeData<T extends { id: string; synced_at?: string | null; is_dirty?:
 
     if (remoteItem && localItem) {
       // 如果本地有未同步的更改，保留本地并标记为已同步
-      if (localItem.is_dirty) {
-        merged.push(markSynced(localItem, syncedAt));
+      if (isDirty(localItem)) {
+        merged.push(markSynced(localItem, syncedAtStr));
       } else {
-        // 否则取更新的版本（比较 synced_at 时间）
-        const remoteTime = remoteItem.synced_at ? new Date(remoteItem.synced_at).getTime() : 0;
-        const localTime = localItem.synced_at ? new Date(localItem.synced_at).getTime() : 0;
+        // 否则取更新的版本（比较 synced_at/syncedAt 时间）
+        const remoteTime = getSyncedAt(remoteItem);
+        const localTime = getSyncedAt(localItem);
         const winner = localTime > remoteTime ? localItem : remoteItem;
         // ❌ 不要用 markSynced！会覆盖 synced_at 破坏下次比较
         merged.push(winner);
@@ -342,19 +351,14 @@ function mergeData<T extends { id: string; synced_at?: string | null; is_dirty?:
       merged.push(remoteItem);
     } else if (localItem) {
       // 只有本地的新记录，标记为已同步
-      merged.push(markSynced(localItem, syncedAt));
+      merged.push(markSynced(localItem, syncedAtStr));
     }
   });
 
   // 按创建时间倒序排列（确保最新的记录在前面）
-  // 字段名兼容：createdAt 是本地驼峰，created_at 是云端下划线
-  return merged.sort((a, b) => {
-    const timeA = (a as any).createdAt || (a as any).created_at
-      ? new Date((a as any).createdAt || (a as any).created_at).getTime()
-      : 0;
-    const timeB = (b as any).createdAt || (b as any).created_at
-      ? new Date((b as any).createdAt || (b as any).created_at).getTime()
-      : 0;
-    return timeB - timeA;
-  });
+  const getCreatedAt = (item: T): number => {
+    const val = (item as any).createdAt || (item as any).created_at;
+    return val ? new Date(val).getTime() : 0;
+  };
+  return merged.sort((a, b) => getCreatedAt(b) - getCreatedAt(a));
 }
