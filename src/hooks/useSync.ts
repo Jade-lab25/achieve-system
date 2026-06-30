@@ -345,9 +345,14 @@ function mergeData<T extends { id: string; synced_at?: string | null; is_dirty?:
   });
 
   // 按创建时间倒序排列（确保最新的记录在前面）
+  // 字段名兼容：createdAt 是本地驼峰，created_at 是云端下划线
   return merged.sort((a, b) => {
-    const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
-    const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+    const timeA = (a as any).createdAt || (a as any).created_at
+      ? new Date((a as any).createdAt || (a as any).created_at).getTime()
+      : 0;
+    const timeB = (b as any).createdAt || (b as any).created_at
+      ? new Date((b as any).createdAt || (b as any).created_at).getTime()
+      : 0;
     return timeB - timeA;
   });
 }

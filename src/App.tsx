@@ -64,17 +64,27 @@ function App() {
 
   // 同步完成后更新 React state（关键修复：让界面立即显示云端数据）
   const handleDataFetched = (data: any) => {
+    // ✅ 从 achievementLogs 实时计算成就值，不依赖可能为 null 的 userStats
+    const logs = data.achievementLogs || [];
+    const totalEarned = logs
+      .filter((log: any) => log.type === 'task' || log.type === 'todo')
+      .reduce((sum: number, log: any) => sum + (log.points || 0), 0);
+    const totalSpent = logs
+      .filter((log: any) => log.type === 'commodity' || log.type === 'shop_purchase')
+      .reduce((sum: number, log: any) => sum + Math.abs(log.points || 0), 0);
+    const totalAchievements = totalEarned - totalSpent;
+
     hydrateState({
       todos: data.todos,
       checkInProjects: data.checkInProjects,
       checkInRecords: data.checkInRecords,
       timeRecords: data.timeRecords,
-      achievementLogs: data.achievementLogs,
+      achievementLogs: logs,
       inspirations: data.inspirations,
       shopItems: data.shopItems,
-      totalAchievements: data.userStats?.total_achievements ?? 0,
-      totalEarned: data.userStats?.total_earned ?? 0,
-      totalSpent: data.userStats?.total_spent ?? 0,
+      totalAchievements,
+      totalEarned,
+      totalSpent,
     });
   };
 

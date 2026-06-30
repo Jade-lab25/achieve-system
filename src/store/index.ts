@@ -41,13 +41,20 @@ function loadState(): AppState {
     if (saved) {
       const parsed = JSON.parse(saved);
       const state = { ...initialState, ...parsed };
-      
-      if (parsed.userStats) {
-        state.totalAchievements = parsed.userStats.total_achievements || state.totalAchievements;
-        state.totalEarned = parsed.userStats.total_earned || state.totalEarned;
-        state.totalSpent = parsed.userStats.total_spent || state.totalSpent;
-      }
-      
+
+      // ✅ 从 achievementLogs 实时计算成就值，不依赖 userStats
+      const logs = state.achievementLogs || [];
+      const totalEarned = logs
+        .filter((log: any) => log.type === 'task' || log.type === 'todo')
+        .reduce((sum: number, log: any) => sum + (log.points || 0), 0);
+      const totalSpent = logs
+        .filter((log: any) => log.type === 'commodity' || log.type === 'shop_purchase')
+        .reduce((sum: number, log: any) => sum + Math.abs(log.points || 0), 0);
+
+      state.totalAchievements = totalEarned - totalSpent;
+      state.totalEarned = totalEarned;
+      state.totalSpent = totalSpent;
+
       return state;
     }
   } catch (e) {
