@@ -25,6 +25,7 @@ function snakeToCamel(obj: any): any {
 /**
  * 通用表同步函数 - 批量 upsert 替代逐条操作
  * 性能提升: 1000条记录从 100秒 → 2秒
+ * ✅ 修复：返回带服务器 synced_at 时间戳的记录，用于本地更新
  *
  * @param tableName 表名
  * @param userId 用户ID
@@ -38,7 +39,7 @@ async function syncTable<T extends { id: string; synced_at?: string | null; is_d
   localItems: T[],
   batchSize: number = 100,
   syncAllItems: boolean = false
-): Promise<{ error: Error | null; syncedCount: number }> {
+): Promise<{ error: Error | null; syncedCount: number; syncedRecords: T[] }> {
   try {
     // 增量同步：仅同步标记为 dirty 或未同步过的记录
     const itemsToSync = syncAllItems
@@ -46,8 +47,10 @@ async function syncTable<T extends { id: string; synced_at?: string | null; is_d
       : localItems.filter(item => item.is_dirty || !item.synced_at);
 
     if (itemsToSync.length === 0) {
-      return { error: null, syncedCount: 0 };
+      return { error: null, syncedCount: 0, syncedRecords: [] };
     }
+
+    const allSynced: any[] = [];
 
     // 分批批量 upsert
     for (let i = 0; i < itemsToSync.length; i += batchSize) {
@@ -61,32 +64,43 @@ async function syncTable<T extends { id: string; synced_at?: string | null; is_d
         is_dirty: false,
       }));
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from(tableName)
-        .upsert(records, { onConflict: 'id' });
+        .upsert(records, { onConflict: 'id' })
+        .select();
 
       if (error) throw error;
+      if (data) {
+        allSynced.push(...data);
+      }
     }
 
-    return { error: null, syncedCount: itemsToSync.length };
+    return {
+      error: null,
+      syncedCount: allSynced.length,
+      syncedRecords: allSynced.map(snakeToCamel) as T[]
+    };
   } catch (error) {
-    return { error: error as Error, syncedCount: 0 };
+    return { error: error as Error, syncedCount: 0, syncedRecords: [] };
   }
 }
 
 /**
  * 批量插入记录 - 用于流水表（打卡记录、时间记录、成就流水）
  * 性能提升: N次请求 → 1次请求
+ * ✅ 修复：返回带服务器 synced_at 时间戳的记录，用于本地更新
  */
-async function batchInsert<T>(
+async function batchInsert<T extends { id: string }>(
   tableName: string,
   userId: string,
   records: T[],
   batchSize: number = 500
-): Promise<{ error: Error | null; insertedCount: number }> {
+): Promise<{ error: Error | null; insertedCount: number; insertedRecords: T[] }> {
   if (records.length === 0) {
-    return { error: null, insertedCount: 0 };
+    return { error: null, insertedCount: 0, insertedRecords: [] };
   }
+
+  const allInserted: any[] = [];
 
   try {
     const now = new Date().toISOString();
@@ -99,20 +113,27 @@ async function batchInsert<T>(
         synced_at: now,
       }));
 
-      const { error } = await supabase
+      const { data, error } = await supabase
         .from(tableName)
         .insert(recordsToInsert)
-        // 忽略重复主键（多端同步时可能重复插入）
         .select();
 
       if (error && !error.message.includes('duplicate key')) {
         throw error;
       }
+
+      if (data) {
+        allInserted.push(...data);
+      }
     }
 
-    return { error: null, insertedCount: records.length };
+    return {
+      error: null,
+      insertedCount: allInserted.length,
+      insertedRecords: allInserted.map(snakeToCamel) as T[]
+    };
   } catch (error) {
-    return { error: error as Error, insertedCount: 0 };
+    return { error: error as Error, insertedCount: 0, insertedRecords: [] };
   }
 }
 
@@ -181,9 +202,10 @@ export const todo = {
    * 批量同步 todos - 使用通用 syncTable
    * ❌ 已移除：本地不存在即删除远程记录的危险逻辑
    * ✅ 只做增量 upsert，不自动删除任何数据
+   * ✅ 返回带服务器 synced_at 时间戳的同步记录
    */
   sync: async (userId: string, localTodos: Todo[], syncAll: boolean = false) => {
-    return syncTable('todos', userId, localTodos, 100, syncAll);
+    return syncTable<Todo>('todos', userId, localTodos, 100, syncAll);
   }
 };
 
@@ -225,9 +247,10 @@ export const checkInProject = {
   /**
    * 批量同步打卡项目
    * ❌ 已移除：本地不存在即删除远程记录的危险逻辑
+   * ✅ 返回带服务器 synced_at 时间戳的同步记录
    */
   sync: async (userId: string, localProjects: CheckInProject[], syncAll: boolean = false) => {
-    return syncTable('check_in_projects', userId, localProjects, 100, syncAll);
+    return syncTable<CheckInProject>('check_in_projects', userId, localProjects, 100, syncAll);
   }
 };
 
@@ -343,9 +366,10 @@ export const inspiration = {
   /**
    * 批量同步灵感
    * ❌ 已移除：本地不存在即删除远程记录的危险逻辑
+   * ✅ 返回带服务器 synced_at 时间戳的同步记录
    */
   sync: async (userId: string, localInspirations: Inspiration[], syncAll: boolean = false) => {
-    return syncTable('inspirations', userId, localInspirations, 100, syncAll);
+    return syncTable<Inspiration>('inspirations', userId, localInspirations, 100, syncAll);
   }
 };
 
@@ -378,6 +402,32 @@ export const userStats = {
   }
 };
 
+/**
+ * 用已同步的记录更新本地数据
+ * ✅ 关键修复：将服务器返回的 synced_at 时间戳写入本地记录
+ */
+function updateLocalSyncStatus<T extends { id: string; synced_at?: string | null; syncedAt?: string | null; is_dirty?: boolean; isDirty?: boolean }>(
+  localItems: T[],
+  syncedItems: T[]
+): T[] {
+  const syncedMap = new Map(syncedItems.map(item => [item.id, item]));
+  return localItems.map(item => {
+    const syncedItem = syncedMap.get(item.id);
+    if (syncedItem) {
+      // 保留本地数据，只更新同步相关字段
+      const syncedAt = (syncedItem as any).synced_at || (syncedItem as any).syncedAt;
+      return {
+        ...item,
+        synced_at: syncedAt,
+        syncedAt: syncedAt,
+        is_dirty: false,
+        isDirty: false,
+      };
+    }
+    return item;
+  });
+}
+
 export const syncAll = async (userId: string, data: {
   todos: any[];
   checkInProjects: any[];
@@ -391,58 +441,74 @@ export const syncAll = async (userId: string, data: {
   const errors: string[] = [];
   const syncResults: Record<string, number> = {};
 
+  // 收集所有成功同步的记录，用于后续更新本地状态
+  let syncedTodos: any[] = [];
+  let syncedProjects: any[] = [];
+  let insertedCheckInRecords: any[] = [];
+  let insertedTimeRecords: any[] = [];
+  let insertedLogs: any[] = [];
+  let syncedInspirations: any[] = [];
+  let syncedShopItems: any[] = [];
+
   try {
     // 1. 同步 todos - 批量 upsert
     if (data.todos.length > 0) {
-      const { error, syncedCount } = await todo.sync(userId, data.todos);
+      const { error, syncedCount, syncedRecords } = await todo.sync(userId, data.todos);
       if (error) errors.push(`Todos sync error: ${error.message}`);
       syncResults.todos = syncedCount;
+      syncedTodos = syncedRecords;
     }
 
     // 2. 同步 checkInProjects - 批量 upsert
     if (data.checkInProjects.length > 0) {
-      const { error, syncedCount } = await checkInProject.sync(userId, data.checkInProjects);
+      const { error, syncedCount, syncedRecords } = await checkInProject.sync(userId, data.checkInProjects);
       if (error) errors.push(`Project sync error: ${error.message}`);
       syncResults.checkInProjects = syncedCount;
+      syncedProjects = syncedRecords;
     }
 
     // 3. 同步 checkInRecords - 批量插入（流水表只增不减）
     // 过滤已同步的记录（有 synced_at 且不是 dirty）
-    const unsyncedCheckInRecords = data.checkInRecords.filter(r => !r.synced_at || r.is_dirty);
+    const unsyncedCheckInRecords = data.checkInRecords.filter(r => !r.synced_at || !r.syncedAt || r.is_dirty || r.isDirty);
     if (unsyncedCheckInRecords.length > 0) {
-      const { error, insertedCount } = await batchInsert('check_in_records', userId, unsyncedCheckInRecords, 500);
+      const { error, insertedCount, insertedRecords } = await batchInsert('check_in_records', userId, unsyncedCheckInRecords, 500);
       if (error) errors.push(`Check-in record sync error: ${error.message}`);
       syncResults.checkInRecords = insertedCount;
+      insertedCheckInRecords = insertedRecords;
     }
 
     // 4. 同步 timeRecords - 批量插入
-    const unsyncedTimeRecords = data.timeRecords.filter(r => !r.synced_at || r.is_dirty);
+    const unsyncedTimeRecords = data.timeRecords.filter(r => !r.synced_at || !r.syncedAt || r.is_dirty || r.isDirty);
     if (unsyncedTimeRecords.length > 0) {
-      const { error, insertedCount } = await batchInsert('time_records', userId, unsyncedTimeRecords, 500);
+      const { error, insertedCount, insertedRecords } = await batchInsert('time_records', userId, unsyncedTimeRecords, 500);
       if (error) errors.push(`Time record sync error: ${error.message}`);
       syncResults.timeRecords = insertedCount;
+      insertedTimeRecords = insertedRecords;
     }
 
     // 5. 同步 achievementLogs - 批量插入
-    const unsyncedLogs = data.achievementLogs.filter(l => !l.synced_at || l.is_dirty);
+    const unsyncedLogs = data.achievementLogs.filter(l => !l.synced_at || !l.syncedAt || l.is_dirty || l.isDirty);
     if (unsyncedLogs.length > 0) {
-      const { error, insertedCount } = await batchInsert('achievement_logs', userId, unsyncedLogs, 500);
+      const { error, insertedCount, insertedRecords } = await batchInsert('achievement_logs', userId, unsyncedLogs, 500);
       if (error) errors.push(`Achievement log sync error: ${error.message}`);
       syncResults.achievementLogs = insertedCount;
+      insertedLogs = insertedRecords;
     }
 
     // 6. 同步 inspirations - 批量 upsert
     if (data.inspirations.length > 0) {
-      const { error, syncedCount } = await inspiration.sync(userId, data.inspirations);
+      const { error, syncedCount, syncedRecords } = await inspiration.sync(userId, data.inspirations);
       if (error) errors.push(`Inspiration sync error: ${error.message}`);
       syncResults.inspirations = syncedCount;
+      syncedInspirations = syncedRecords;
     }
 
     // 7. 同步 shopItems - 批量 upsert
     if (data.shopItems.length > 0) {
-      const { error, syncedCount } = await syncTable('shop_items', userId, data.shopItems, 100);
+      const { error, syncedCount, syncedRecords } = await syncTable<ShopItem>('shop_items', userId, data.shopItems, 100);
       if (error) errors.push(`Shop items sync error: ${error.message}`);
       syncResults.shopItems = syncedCount;
+      syncedShopItems = syncedRecords;
     }
 
     // 8. 同步 userStats
@@ -455,10 +521,21 @@ export const syncAll = async (userId: string, data: {
     errors.push(`Sync failed: ${(error as Error).message}`);
   }
 
+  // ✅ 关键修复：返回同步后的数据，调用者可以用它更新本地状态
   return {
     success: errors.length === 0,
     errors,
     stats: syncResults,
+    syncedData: {
+      todos: updateLocalSyncStatus(data.todos, syncedTodos),
+      checkInProjects: updateLocalSyncStatus(data.checkInProjects, syncedProjects),
+      checkInRecords: updateLocalSyncStatus(data.checkInRecords, insertedCheckInRecords),
+      timeRecords: updateLocalSyncStatus(data.timeRecords, insertedTimeRecords),
+      achievementLogs: updateLocalSyncStatus(data.achievementLogs, insertedLogs),
+      inspirations: updateLocalSyncStatus(data.inspirations, syncedInspirations),
+      shopItems: updateLocalSyncStatus(data.shopItems, syncedShopItems),
+      userStats: data.userStats,
+    }
   };
 };
 

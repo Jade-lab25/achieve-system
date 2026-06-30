@@ -166,38 +166,40 @@ export function useSync(userId: string | null, options?: SyncOptions) {
 
       // 统计需要同步的记录数（增量同步）
       const dirtyCounts = {
-        todos: localData.todos.filter(t => t.is_dirty || !t.synced_at).length,
-        checkInProjects: localData.checkInProjects.filter(p => p.is_dirty || !p.synced_at).length,
-        checkInRecords: localData.checkInRecords.filter(r => r.is_dirty || !r.synced_at).length,
-        timeRecords: localData.timeRecords.filter(r => r.is_dirty || !r.synced_at).length,
-        achievementLogs: localData.achievementLogs.filter(l => l.is_dirty || !l.synced_at).length,
-        inspirations: localData.inspirations.filter(i => i.is_dirty || !i.synced_at).length,
-        shopItems: localData.shopItems.filter(s => s.is_dirty || !s.synced_at).length,
+        todos: localData.todos.filter(t => t.is_dirty || t.isDirty || !t.synced_at || !t.syncedAt).length,
+        checkInProjects: localData.checkInProjects.filter(p => p.is_dirty || p.isDirty || !p.synced_at || !p.syncedAt).length,
+        checkInRecords: localData.checkInRecords.filter(r => r.is_dirty || r.isDirty || !r.synced_at || !r.syncedAt).length,
+        timeRecords: localData.timeRecords.filter(r => r.is_dirty || r.isDirty || !r.synced_at || !r.syncedAt).length,
+        achievementLogs: localData.achievementLogs.filter(l => l.is_dirty || l.isDirty || !l.synced_at || !l.syncedAt).length,
+        inspirations: localData.inspirations.filter(i => i.is_dirty || i.isDirty || !i.synced_at || !i.syncedAt).length,
+        shopItems: localData.shopItems.filter(s => s.is_dirty || s.isDirty || !s.synced_at || !s.syncedAt).length,
       };
       const totalDirty = Object.values(dirtyCounts).reduce((a, b) => a + b, 0);
       console.log('[Sync] Incremental sync:', { totalDirty, ...dirtyCounts });
 
-      const { success, errors, stats } = await syncAll(userId, localData);
+      const { success, errors, stats, syncedData } = await syncAll(userId, localData);
       console.log('[Sync] syncAll result:', { success, errors, stats });
 
       if (success) {
+        // ✅ 关键修复：先更新本地记录的同步状态（清除 is_dirty，设置 synced_at）
         const { data: remoteData } = await fetchAll(userId);
 
         const syncedAtStr = new Date().toISOString();
         const mergedData: SyncData = {
-          todos: mergeData(localData.todos, remoteData.todos, syncedAtStr),
-          checkInProjects: mergeData(localData.checkInProjects, remoteData.checkInProjects, syncedAtStr),
-          checkInRecords: mergeData(localData.checkInRecords, remoteData.checkInRecords, syncedAtStr),
-          timeRecords: mergeData(localData.timeRecords, remoteData.timeRecords, syncedAtStr),
-          achievementLogs: mergeData(localData.achievementLogs, remoteData.achievementLogs, syncedAtStr),
-          inspirations: mergeData(localData.inspirations, remoteData.inspirations, syncedAtStr),
-          shopItems: mergeData(localData.shopItems, remoteData.shopItems, syncedAtStr),
-          userStats: { ...localData.userStats, ...remoteData.userStats }
+          // 先用 syncedData（本地记录已更新同步状态），再和云端数据合并
+          todos: mergeData(syncedData.todos, remoteData.todos, syncedAtStr),
+          checkInProjects: mergeData(syncedData.checkInProjects, remoteData.checkInProjects, syncedAtStr),
+          checkInRecords: mergeData(syncedData.checkInRecords, remoteData.checkInRecords, syncedAtStr),
+          timeRecords: mergeData(syncedData.timeRecords, remoteData.timeRecords, syncedAtStr),
+          achievementLogs: mergeData(syncedData.achievementLogs, remoteData.achievementLogs, syncedAtStr),
+          inspirations: mergeData(syncedData.inspirations, remoteData.inspirations, syncedAtStr),
+          shopItems: mergeData(syncedData.shopItems, remoteData.shopItems, syncedAtStr),
+          userStats: { ...syncedData.userStats, ...remoteData.userStats }
         };
 
         saveLocalData(mergedData);
 
-        // ✅ 同步完成后也更新 React state（清除 is_dirty 标记等）
+        // ✅ 同步完成后更新 React state
         if (options?.onDataFetched) {
           options.onDataFetched(mergedData);
         }

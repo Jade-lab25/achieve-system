@@ -3,10 +3,12 @@ export type TodoTag = 'long-term' | 'one-time';
 /** 成就商店商品分类 */
 export type ShopCategory = 'life' | 'study' | 'work' | 'entertainment' | 'other';
 
-/** 可同步实体的通用字段 */
+/** 可同步实体的通用字段 - 同时支持 snake_case 和 camelCase */
 export interface Syncable {
   synced_at?: string | null;
+  syncedAt?: string | null;
   is_dirty?: boolean;
+  isDirty?: boolean;
 }
 
 /**
