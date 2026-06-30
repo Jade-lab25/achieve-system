@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAppState } from './store';
 import { Navigation } from './components/Navigation';
 import { BottomNavigation } from './components/BottomNavigation';
@@ -62,9 +62,8 @@ function App() {
     purchaseShopItem,
   } = useAppState();
 
-  // 同步完成后更新 React state（关键修复：让界面立即显示云端数据）
-  const handleDataFetched = (data: any) => {
-    // ✅ 从 achievementLogs 实时计算成就值，不依赖可能为 null 的 userStats
+  // ✅ useCallback 防止每次渲染创建新函数，稳定 fetchFromCloud/performSync 依赖
+  const handleDataFetched = useCallback((data: any) => {
     const logs = data.achievementLogs || [];
     const totalEarned = logs
       .filter((log: any) => log.type === 'task' || log.type === 'todo')
@@ -86,9 +85,12 @@ function App() {
       totalEarned,
       totalSpent,
     });
-  };
+  }, [hydrateState]);
 
-  const { syncState, fetchFromCloud, performSync, syncOnChange } = useSync(userId, { onDataFetched: handleDataFetched });
+  // ✅ useMemo 防止 options 对象每渲染重建，稳定 useSync 内部所有 callback
+  const syncOptions = useMemo(() => ({ onDataFetched: handleDataFetched }), [handleDataFetched]);
+
+  const { syncState, fetchFromCloud, performSync, syncOnChange } = useSync(userId, syncOptions);
 
   useEffect(() => {
     const checkAuth = async () => {
