@@ -233,9 +233,11 @@ export function useSync(userId: string | null) {
     try {
       const { data, success } = await fetchAll(userId);
       if (success && data) {
+        // 先加载本地数据，保留 is_dirty 的记录
+        const localData = loadLocalData();
         const timeRecords: TimeRecord[] = data.timeRecords || [];
         const todos: Todo[] = data.todos || [];
-        
+
         const recalculatedTodos = todos.map((todo: Todo) => {
           const todoRecords = timeRecords.filter((r: TimeRecord) => r.todoId === todo.id && r.endTime);
           const totalSeconds = todoRecords.reduce((sum: number, record: TimeRecord) => {
@@ -248,17 +250,21 @@ export function useSync(userId: string | null) {
           return { ...todo, totalTime: totalSeconds };
         });
 
-        saveLocalData({
-          todos: recalculatedTodos,
-          checkInProjects: data.checkInProjects,
-          checkInRecords: data.checkInRecords,
-          timeRecords: data.timeRecords,
-          achievementLogs: data.achievementLogs,
-          inspirations: data.inspirations,
-          shopItems: data.shopItems,
-          userStats: data.userStats || {}
-        });
-        return { ...data, todos: recalculatedTodos };
+        // ✅ 合并本地和云端数据，保留本地未同步的 dirty 记录
+        const syncedAt = new Date().toISOString();
+        const mergedData: SyncData = {
+          todos: mergeData(localData.todos, recalculatedTodos, syncedAt),
+          checkInProjects: mergeData(localData.checkInProjects, data.checkInProjects, syncedAt),
+          checkInRecords: mergeData(localData.checkInRecords, data.checkInRecords, syncedAt),
+          timeRecords: mergeData(localData.timeRecords, data.timeRecords, syncedAt),
+          achievementLogs: mergeData(localData.achievementLogs, data.achievementLogs, syncedAt),
+          inspirations: mergeData(localData.inspirations, data.inspirations, syncedAt),
+          shopItems: mergeData(localData.shopItems, data.shopItems, syncedAt),
+          userStats: { ...localData.userStats, ...data.userStats }
+        };
+
+        saveLocalData(mergedData);
+        return mergedData;
       }
     } catch (error) {
       console.error('[Sync] fetchFromCloud error:', error);
@@ -295,7 +301,8 @@ function mergeData<T extends { id: string; synced_at?: string | null; is_dirty?:
   const merged: T[] = [];
   const seen = new Set<string>();
 
-  [...remote, ...local].forEach(item => {
+  // ✅ 本地优先：确保本地未同步的 dirty 记录优先被处理
+  [...local, ...remote].forEach(item => {
     if (seen.has(item.id)) return;
     seen.add(item.id);
 
