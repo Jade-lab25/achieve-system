@@ -317,8 +317,8 @@ function mergeData<T extends { id: string; synced_at?: string | null; is_dirty?:
   const merged: T[] = [];
   const seen = new Set<string>();
 
-  // ✅ 本地优先：确保本地未同步的 dirty 记录优先被处理
-  [...local, ...remote].forEach(item => {
+  // ✅ 云端优先：确保云端已同步的最新数据优先被采用
+  [...remote, ...local].forEach(item => {
     if (seen.has(item.id)) return;
     seen.add(item.id);
 
@@ -330,13 +330,15 @@ function mergeData<T extends { id: string; synced_at?: string | null; is_dirty?:
       if (localItem.is_dirty) {
         merged.push(markSynced(localItem, syncedAt));
       } else {
-        // 否则取更新的版本
+        // 否则取更新的版本（比较 synced_at 时间）
         const remoteTime = remoteItem.synced_at ? new Date(remoteItem.synced_at).getTime() : 0;
         const localTime = localItem.synced_at ? new Date(localItem.synced_at).getTime() : 0;
         const winner = localTime > remoteTime ? localItem : remoteItem;
-        merged.push(markSynced(winner, syncedAt));
+        // ❌ 不要用 markSynced！会覆盖 synced_at 破坏下次比较
+        merged.push(winner);
       }
     } else if (remoteItem) {
+      // 只有云端的记录，直接用
       merged.push(remoteItem);
     } else if (localItem) {
       // 只有本地的新记录，标记为已同步
