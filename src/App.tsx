@@ -62,7 +62,7 @@ function App() {
     purchaseShopItem,
   } = useAppState();
 
-  // ✅ useCallback 防止每次渲染创建新函数，稳定 fetchFromCloud/performSync 依赖
+  // ✅ useCallback 防止每次渲染创建新函数，稳定 fetchFromCloud 依赖
   const handleDataFetched = useCallback((data: any) => {
     const logs = data.achievementLogs || [];
     const totalEarned = logs
@@ -104,7 +104,7 @@ function App() {
     checkAuth();
   }, [fetchFromCloud]);
 
-  // ✅ 关键修复：当 state 变化时触发同步
+  // ✅ 当 state 变化时触发同步（自动保存 + 延迟上传）
   useEffect(() => {
     syncOnChange(userId, state);
   }, [userId, state, syncOnChange]);

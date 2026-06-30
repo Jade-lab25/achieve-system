@@ -201,10 +201,8 @@ export function useSync(userId: string | null, options?: SyncOptions) {
 
         saveLocalData(mergedData);
 
-        // ✅ 同步完成后更新 React state
-        if (options?.onDataFetched) {
-          options.onDataFetched(mergedData);
-        }
+        // ✅ performSync 不需要更新 React state —— 数据已经在 UI 中了
+        // 调用 onDataFetched 会导致 syncOnChange → performSync 循环
 
         const syncDuration = ((Date.now() - syncStartTime) / 1000).toFixed(1);
         isSyncingRef.current = false;
