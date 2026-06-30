@@ -36,6 +36,7 @@ interface SyncOptions {
 
 export function useSync(userId: string | null, options?: SyncOptions) {
   const syncTimeoutRef = useRef<number | null>(null);
+  const isSyncingRef = useRef<boolean>(false);
   const [syncState, setSyncState] = useState<SyncState>({
     isOnline: navigator.onLine,
     isSyncing: false,
@@ -135,6 +136,13 @@ export function useSync(userId: string | null, options?: SyncOptions) {
       return;
     }
 
+    // ✅ 并发守卫：防止多个同步请求同时执行
+    if (isSyncingRef.current) {
+      console.log('[Sync] Already syncing, skipping duplicate call');
+      return;
+    }
+    isSyncingRef.current = true;
+
     setSyncState(prev => ({ ...prev, isSyncing: true, syncStatus: 'syncing', syncMessage: '正在同步数据...' }));
 
     try {
@@ -157,6 +165,7 @@ export function useSync(userId: string | null, options?: SyncOptions) {
       // ✅ 没有脏数据需要同步时，跳过 fetchAll 避免触发 onDataFetched 导致循环
       if (totalDirty === 0) {
         console.log('[Sync] No dirty records, skipping sync');
+        isSyncingRef.current = false;
         setSyncState(prev => ({
           ...prev,
           isSyncing: false,
@@ -194,6 +203,7 @@ export function useSync(userId: string | null, options?: SyncOptions) {
         }
 
         const syncDuration = ((Date.now() - syncStartTime) / 1000).toFixed(1);
+        isSyncingRef.current = false;
         setSyncState(prev => ({
           ...prev,
           isSyncing: false,
@@ -204,6 +214,7 @@ export function useSync(userId: string | null, options?: SyncOptions) {
 
         return mergedData;
       } else {
+        isSyncingRef.current = false;
         setSyncState(prev => ({
           ...prev,
           isSyncing: false,
@@ -213,6 +224,7 @@ export function useSync(userId: string | null, options?: SyncOptions) {
       }
     } catch (error) {
       console.error('[Sync] performSync error:', error);
+      isSyncingRef.current = false;
       setSyncState(prev => ({
         ...prev,
         isSyncing: false,
@@ -283,18 +295,12 @@ export function useSync(userId: string | null, options?: SyncOptions) {
   const syncOnChange = useCallback(async (userId: string | null, data: SyncData) => {
     saveLocalData(data);
 
-    if (userId && navigator.onLine) {
+    if (userId && navigator.onLine && !isSyncingRef.current) {
       // ✅ 防抖：清除之前的定时器，防止快速连续操作触发多次同步
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
       }
       syncTimeoutRef.current = window.setTimeout(() => {
-        // ✅ 守卫：正在同步中时不触发新的同步
-        setSyncState(prev => {
-          if (prev.isSyncing) return prev; // 正在同步中，跳过
-          return prev;
-        });
-        // 如果 isSyncing 为 true，performSync 内部会再次检查 dirty count
         performSync(userId!);
       }, 1500);
     }
