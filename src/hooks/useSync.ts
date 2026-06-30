@@ -112,6 +112,8 @@ export function useSync(userId: string | null, options?: SyncOptions) {
 
   const saveLocalData = useCallback((data: SyncData) => {
     try {
+      // ✅ 兼容 AppState（顶层 totalAchievements）和 SyncData（嵌套 userStats）
+      const appStateData = data as any;
       const saveData = {
         todos: data.todos,
         checkInProjects: data.checkInProjects,
@@ -120,9 +122,10 @@ export function useSync(userId: string | null, options?: SyncOptions) {
         achievementLogs: data.achievementLogs,
         inspirations: data.inspirations,
         shopItems: data.shopItems,
-        totalAchievements: data.userStats.total_achievements || 0,
-        totalEarned: data.userStats.total_earned || 0,
-        totalSpent: data.userStats.total_spent || 0
+        totalAchievements: appStateData.totalAchievements ?? data.userStats?.total_achievements ?? 0,
+        totalEarned: appStateData.totalEarned ?? data.userStats?.total_earned ?? 0,
+        totalSpent: appStateData.totalSpent ?? data.userStats?.total_spent ?? 0,
+        userStats: data.userStats || {},
       };
       localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(saveData));
     } catch (e) {
@@ -183,15 +186,16 @@ export function useSync(userId: string | null, options?: SyncOptions) {
         const { data: remoteData } = await fetchAll(userId);
 
         const syncedAtStr = new Date().toISOString();
+        // ✅ updateLocalSyncStatus 已在上传成功后清除 dirty 标记
+        //    mergeData 不需要再 markSynced（避免误清理上传失败的记录）
         const mergedData: SyncData = {
-          // 先用 syncedData（本地记录已更新同步状态），再和云端数据合并
-          todos: mergeData(syncedData.todos, remoteData.todos, syncedAtStr),
-          checkInProjects: mergeData(syncedData.checkInProjects, remoteData.checkInProjects, syncedAtStr),
-          checkInRecords: mergeData(syncedData.checkInRecords, remoteData.checkInRecords, syncedAtStr),
-          timeRecords: mergeData(syncedData.timeRecords, remoteData.timeRecords, syncedAtStr),
-          achievementLogs: mergeData(syncedData.achievementLogs, remoteData.achievementLogs, syncedAtStr),
-          inspirations: mergeData(syncedData.inspirations, remoteData.inspirations, syncedAtStr),
-          shopItems: mergeData(syncedData.shopItems, remoteData.shopItems, syncedAtStr),
+          todos: mergeData(syncedData.todos, remoteData.todos, syncedAtStr, false),
+          checkInProjects: mergeData(syncedData.checkInProjects, remoteData.checkInProjects, syncedAtStr, false),
+          checkInRecords: mergeData(syncedData.checkInRecords, remoteData.checkInRecords, syncedAtStr, false),
+          timeRecords: mergeData(syncedData.timeRecords, remoteData.timeRecords, syncedAtStr, false),
+          achievementLogs: mergeData(syncedData.achievementLogs, remoteData.achievementLogs, syncedAtStr, false),
+          inspirations: mergeData(syncedData.inspirations, remoteData.inspirations, syncedAtStr, false),
+          shopItems: mergeData(syncedData.shopItems, remoteData.shopItems, syncedAtStr, false),
           userStats: { ...syncedData.userStats, ...remoteData.userStats }
         };
 
@@ -262,16 +266,18 @@ export function useSync(userId: string | null, options?: SyncOptions) {
           return { ...todo, totalTime: totalSeconds };
         });
 
-        // ✅ 合并本地和云端数据，保留本地未同步的 dirty 记录
+        // ✅ 合并本地和云端数据。
+        // ⚠️ fetchFromCloud 只下载不上传，所以 shouldMarkSynced=false
+        //    防止本地未上传的 dirty 记录被错误标记为已同步
         const syncedAt = new Date().toISOString();
         const mergedData: SyncData = {
-          todos: mergeData(localData.todos, recalculatedTodos, syncedAt),
-          checkInProjects: mergeData(localData.checkInProjects, data.checkInProjects, syncedAt),
-          checkInRecords: mergeData(localData.checkInRecords, data.checkInRecords, syncedAt),
-          timeRecords: mergeData(localData.timeRecords, data.timeRecords, syncedAt),
-          achievementLogs: mergeData(localData.achievementLogs, data.achievementLogs, syncedAt),
-          inspirations: mergeData(localData.inspirations, data.inspirations, syncedAt),
-          shopItems: mergeData(localData.shopItems, data.shopItems, syncedAt),
+          todos: mergeData(localData.todos, recalculatedTodos, syncedAt, false),
+          checkInProjects: mergeData(localData.checkInProjects, data.checkInProjects, syncedAt, false),
+          checkInRecords: mergeData(localData.checkInRecords, data.checkInRecords, syncedAt, false),
+          timeRecords: mergeData(localData.timeRecords, data.timeRecords, syncedAt, false),
+          achievementLogs: mergeData(localData.achievementLogs, data.achievementLogs, syncedAt, false),
+          inspirations: mergeData(localData.inspirations, data.inspirations, syncedAt, false),
+          shopItems: mergeData(localData.shopItems, data.shopItems, syncedAt, false),
           userStats: { ...localData.userStats, ...data.userStats }
         };
 
@@ -345,7 +351,8 @@ export function useSync(userId: string | null, options?: SyncOptions) {
 function mergeData<T extends { id: string; synced_at?: string | null; syncedAt?: string | null; is_dirty?: boolean; isDirty?: boolean; created_at?: string; createdAt?: string }>(
   local: T[],
   remote: T[],
-  syncedAtStr: string
+  syncedAtStr: string,
+  shouldMarkSynced: boolean = true
 ): T[] {
   const merged: T[] = [];
   const seen = new Set<string>();
@@ -366,9 +373,10 @@ function mergeData<T extends { id: string; synced_at?: string | null; syncedAt?:
     const localItem = local.find(l => l.id === item.id);
 
     if (remoteItem && localItem) {
-      // 如果本地有未同步的更改，保留本地并标记为已同步
+      // 如果本地有未同步的更改，保留本地
       if (isDirty(localItem)) {
-        merged.push(markSynced(localItem, syncedAtStr));
+        // ✅ fetchFromCloud 不应标记为已同步（数据尚未上传）
+        merged.push(shouldMarkSynced ? markSynced(localItem, syncedAtStr) : localItem);
       } else {
         // 否则取更新的版本（比较 synced_at/syncedAt 时间）
         const remoteTime = getSyncedAt(remoteItem);
@@ -381,8 +389,9 @@ function mergeData<T extends { id: string; synced_at?: string | null; syncedAt?:
       // 只有云端的记录，直接用
       merged.push(remoteItem);
     } else if (localItem) {
-      // 只有本地的新记录，标记为已同步
-      merged.push(markSynced(localItem, syncedAtStr));
+      // 只有本地的新记录
+      // ✅ fetchFromCloud 不应标记为已同步（数据尚未上传）
+      merged.push(shouldMarkSynced ? markSynced(localItem, syncedAtStr) : localItem);
     }
   });
 
