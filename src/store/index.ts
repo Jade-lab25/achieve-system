@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, AppState, CheckInType, Inspiration } from '../types';
+import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, AppState, CheckInType, Inspiration, Syncable, ShopItem, ShopCategory } from '../types';
 
 const STORAGE_KEY = 'work-status-app-data';
 
@@ -10,10 +10,30 @@ const initialState: AppState = {
   timeRecords: [],
   achievementLogs: [],
   inspirations: [],
+  shopItems: [],
   totalAchievements: 0,
   totalEarned: 0,
   totalSpent: 0,
 };
+
+/**
+ * 标记记录为需要同步的脏数据
+ * 增量同步时只会同步 is_dirty = true 的记录
+ */
+function markDirty<T>(item: T): T & { is_dirty: boolean; synced_at: null } {
+  return {
+    ...item,
+    is_dirty: true,
+    synced_at: null,  // 清除同步时间戳
+  };
+}
+
+/**
+ * 标记数组中指定 ID 的记录为脏数据
+ */
+function markDirtyById<T extends { id: string } & Syncable>(items: T[], id: string): T[] {
+  return items.map(item => item.id === id ? markDirty(item) as T : item);
+}
 
 function loadState(): AppState {
   try {
@@ -52,7 +72,7 @@ export function useAppState() {
   }, [state]);
 
   const addTodo = useCallback((title: string, tag: 'long-term' | 'one-time' = 'one-time') => {
-    const newTodo: Todo = {
+    const newTodo: Todo = markDirty({
       id: Date.now().toString(),
       title,
       createdAt: new Date().toISOString(),
@@ -65,7 +85,7 @@ export function useAppState() {
       timingStartTime: null,
       timingRecordId: null,
       tag,
-    };
+    });
     setState(prev => ({ ...prev, todos: [...prev.todos, newTodo] }));
   }, []);
 
@@ -75,19 +95,19 @@ export function useAppState() {
       if (!todo) return prev;
 
       if (todo.isCompleted) {
-        const uncompletedTodo: Todo = {
+        const uncompletedTodo: Todo = markDirty({
           ...todo,
           isCompleted: false,
           completedAt: null,
-        };
+        });
 
-        const log: AchievementLog = {
+        const log: AchievementLog = markDirty({
           id: Date.now().toString(),
           type: 'todo',
           title: todo.title,
           points: -5,
           createdAt: new Date().toISOString(),
-        };
+        });
 
         return {
           ...prev,
@@ -98,21 +118,21 @@ export function useAppState() {
         };
       } else {
         const completedAt = new Date().toISOString();
-        const completedTodo: Todo = {
+        const completedTodo: Todo = markDirty({
           ...todo,
           isCompleted: true,
           completedAt,
           isTiming: false,
           timingStartTime: null,
-        };
+        });
 
-        const log: AchievementLog = {
+        const log: AchievementLog = markDirty({
           id: Date.now().toString(),
           type: 'todo',
           title: todo.title,
           points: 5,
           createdAt: completedAt,
-        };
+        });
 
         return {
           ...prev,
@@ -139,17 +159,17 @@ export function useAppState() {
       if (!todo) return prev;
 
       const now = new Date().toISOString();
-      const log: AchievementLog = {
+      const log: AchievementLog = markDirty({
         id: Date.now().toString(),
         type: 'task',
         title: `${todo.title} - 标记拖延`,
         points: -2,
         createdAt: now,
-      };
+      });
 
       return {
         ...prev,
-        todos: prev.todos.map(t => t.id === id ? {
+        todos: markDirtyById(prev.todos, id).map(t => t.id === id ? {
           ...t,
           isDelayed: true,
           delayCount: t.delayCount + 1,
@@ -164,7 +184,7 @@ export function useAppState() {
   const updateTodo = useCallback((id: string, title: string) => {
     setState(prev => ({
       ...prev,
-      todos: prev.todos.map(t => t.id === id ? { ...t, title } : t),
+      todos: markDirtyById(prev.todos, id).map(t => t.id === id ? { ...t, title } : t),
     }));
   }, []);
 
@@ -172,6 +192,7 @@ export function useAppState() {
     setState(prev => {
       const todo = prev.todos.find(t => t.id === id);
       if (!todo) return prev;
+      // 置顶不需要同步，只是本地排序
       return {
         ...prev,
         todos: [todo, ...prev.todos.filter(t => t.id !== id)],
@@ -188,7 +209,7 @@ export function useAppState() {
       const startTime = now.toISOString();
       const startTimestamp = now.getTime();
 
-      const timeRecord: TimeRecord = {
+      const timeRecord: TimeRecord = markDirty({
         id: Date.now().toString(),
         startTime,
         endTime: '',
@@ -197,11 +218,11 @@ export function useAppState() {
         createdAt: now.toISOString(),
         todoId: todo.id,
         startTimestamp,
-      };
+      });
 
       return {
         ...prev,
-        todos: prev.todos.map(t => t.id === id ? { ...t, isTiming: true, timingStartTime: startTime, timingRecordId: timeRecord.id } : t),
+        todos: markDirtyById(prev.todos, id).map(t => t.id === id ? { ...t, isTiming: true, timingStartTime: startTime, timingRecordId: timeRecord.id } : t),
         timeRecords: [timeRecord, ...prev.timeRecords],
       };
     });
@@ -220,14 +241,14 @@ export function useAppState() {
 
       return {
         ...prev,
-        todos: prev.todos.map(t => t.id === id ? {
+        todos: markDirtyById(prev.todos, id).map(t => t.id === id ? {
           ...t,
           isTiming: false,
           timingStartTime: null,
           timingRecordId: null,
           totalTime: t.totalTime + durationSeconds,
         } : t),
-        timeRecords: prev.timeRecords.map(r => 
+        timeRecords: markDirtyById(prev.timeRecords, todo.timingRecordId!).map(r =>
           r.id === todo.timingRecordId ? { ...r, endTime } : r
         ),
       };
@@ -235,13 +256,13 @@ export function useAppState() {
   }, []);
 
   const addCheckInProject = useCallback((name: string, type: CheckInType, points: number) => {
-    const project: CheckInProject = {
+    const project: CheckInProject = markDirty({
       id: Date.now().toString(),
       name,
       type,
       points,
       createdAt: new Date().toISOString(),
-    };
+    });
     setState(prev => ({ ...prev, checkInProjects: [...prev.checkInProjects, project] }));
   }, []);
 
@@ -260,23 +281,23 @@ export function useAppState() {
 
       const now = new Date();
       const localDateTime = now.toISOString();
-      
-      const record: CheckInRecord = {
+
+      const record: CheckInRecord = markDirty({
         id: Date.now().toString(),
         projectId: project.id,
         projectName: project.name,
         type: project.type,
         points: project.points,
         createdAt: localDateTime,
-      };
+      });
 
-      const log: AchievementLog = {
+      const log: AchievementLog = markDirty({
         id: Date.now().toString(),
         type: project.type,
         title: project.name,
         points: project.type === 'task' ? project.points : -project.points,
         createdAt: localDateTime,
-      };
+      });
 
       const pointsChange = project.type === 'task' ? project.points : -project.points;
 
@@ -292,7 +313,7 @@ export function useAppState() {
   }, []);
 
   const addTimeRecord = useCallback((startTime: string, endTime: string, content: string) => {
-    const record: TimeRecord = {
+    const record: TimeRecord = markDirty({
       id: Date.now().toString(),
       startTime,
       endTime,
@@ -301,7 +322,7 @@ export function useAppState() {
       createdAt: new Date().toISOString(),
       todoId: null,
       startTimestamp: new Date().getTime(),
-    };
+    });
     setState(prev => ({ ...prev, timeRecords: [record, ...prev.timeRecords] }));
   }, []);
 
@@ -312,7 +333,7 @@ export function useAppState() {
   const updateTimeRecordNote = useCallback((id: string, note: string) => {
     setState(prev => ({
       ...prev,
-      timeRecords: prev.timeRecords.map(r => r.id === id ? { ...r, note } : r),
+      timeRecords: markDirtyById(prev.timeRecords, id).map(r => r.id === id ? { ...r, note } : r),
     }));
   }, []);
 
@@ -321,7 +342,7 @@ export function useAppState() {
     const startTime = now.toISOString();
     const startTimestamp = now.getTime();
 
-    const record: TimeRecord = {
+    const record: TimeRecord = markDirty({
       id: Date.now().toString(),
       startTime,
       endTime: '',
@@ -330,7 +351,7 @@ export function useAppState() {
       createdAt: now.toISOString(),
       todoId: null,
       startTimestamp,
-    };
+    });
 
     setState(prev => ({ ...prev, timeRecords: [record, ...prev.timeRecords] }));
     return record.id;
@@ -346,19 +367,19 @@ export function useAppState() {
 
       return {
         ...prev,
-        timeRecords: prev.timeRecords.map(r => r.id === recordId ? { ...r, endTime } : r),
+        timeRecords: markDirtyById(prev.timeRecords, recordId).map(r => r.id === recordId ? { ...r, endTime } : r),
       };
     });
   }, []);
 
   const addInspiration = useCallback((content: string) => {
     const now = new Date().toISOString();
-    const inspiration: Inspiration = {
+    const inspiration: Inspiration = markDirty({
       id: Date.now().toString(),
       content,
       createdAt: now,
       updatedAt: now,
-    };
+    });
     setState(prev => ({ ...prev, inspirations: [inspiration, ...prev.inspirations] }));
   }, []);
 
@@ -369,7 +390,7 @@ export function useAppState() {
   const updateInspiration = useCallback((id: string, content: string) => {
     setState(prev => ({
       ...prev,
-      inspirations: prev.inspirations.map(i => i.id === id ? { ...i, content, updatedAt: new Date().toISOString(), synced_at: undefined } : i),
+      inspirations: markDirtyById(prev.inspirations, id).map(i => i.id === id ? { ...i, content, updatedAt: new Date().toISOString() } : i),
     }));
   }, []);
 
@@ -378,7 +399,7 @@ export function useAppState() {
       const inspiration = prev.inspirations.find(i => i.id === id);
       if (!inspiration) return prev;
 
-      const newTodo: Todo = {
+      const newTodo: Todo = markDirty({
         id: Date.now().toString(),
         title: inspiration.content,
         createdAt: new Date().toISOString(),
@@ -391,7 +412,7 @@ export function useAppState() {
         timingStartTime: null,
         timingRecordId: null,
         tag: 'one-time',
-      };
+      });
 
       return {
         ...prev,
@@ -405,6 +426,7 @@ export function useAppState() {
     setState(prev => {
       const inspiration = prev.inspirations.find(i => i.id === id);
       if (!inspiration) return prev;
+      // 置顶不需要同步，只是本地排序
       return {
         ...prev,
         inspirations: [inspiration, ...prev.inspirations.filter(i => i.id !== id)],
@@ -588,6 +610,93 @@ export function useAppState() {
     };
   }, [state.achievementLogs, state.checkInRecords, state.timeRecords, state.todos]);
 
+  // ========== 成就商店 ==========
+
+  /** 添加商店商品 */
+  const addShopItem = useCallback((name: string, price: number, category: ShopCategory, description: string = '') => {
+    const newItem: ShopItem = markDirty({
+      id: Date.now().toString(),
+      name,
+      description,
+      price,
+      category,
+      isPurchased: false,
+      createdAt: new Date().toISOString(),
+    });
+    setState(prev => ({ ...prev, shopItems: [...prev.shopItems, newItem] }));
+  }, []);
+
+  /** 更新商店商品 */
+  const updateShopItem = useCallback((id: string, updates: Partial<ShopItem>) => {
+    setState(prev => ({
+      ...prev,
+      shopItems: markDirtyById(prev.shopItems, id).map(item =>
+        item.id === id ? { ...item, ...updates } : item
+      ),
+    }));
+  }, []);
+
+  /** 删除商店商品 */
+  const deleteShopItem = useCallback((id: string) => {
+    setState(prev => ({
+      ...prev,
+      shopItems: prev.shopItems.filter(item => item.id !== id),
+    }));
+  }, []);
+
+  /**
+   * 购买商品
+   * @returns 是否购买成功（余额不足返回 false）
+   */
+  const purchaseShopItem = useCallback((itemId: string): boolean => {
+    setState(prev => {
+      const item = prev.shopItems.find(i => i.id === itemId);
+      if (!item || item.isPurchased) return prev;
+
+      // 检查余额
+      if (prev.totalAchievements < item.price) {
+        return prev;
+      }
+
+      const now = new Date().toISOString();
+
+      // 成就流水
+      const log: AchievementLog = markDirty({
+        id: Date.now().toString(),
+        type: 'shop_purchase',
+        title: `购买：${item.name}`,
+        points: -item.price,
+        createdAt: now,
+        shopItemId: item.id,
+      });
+
+      // 标记商品为已购买
+      const updatedItems = prev.shopItems.map(i =>
+        i.id === itemId
+          ? markDirty({ ...i, isPurchased: true, purchasedAt: now })
+          : i
+      );
+
+      return {
+        ...prev,
+        shopItems: updatedItems,
+        achievementLogs: [log, ...prev.achievementLogs],
+        totalAchievements: prev.totalAchievements - item.price,
+        totalSpent: prev.totalSpent + item.price,
+      };
+    });
+
+    // 验证是否成功
+    const item = state.shopItems.find(i => i.id === itemId);
+    return item ? state.totalAchievements >= item.price : false;
+  }, [state.shopItems, state.totalAchievements]);
+
+  /** 按分类筛选商品 */
+  const getShopItemsByCategory = useCallback((category?: ShopCategory) => {
+    if (!category) return state.shopItems;
+    return state.shopItems.filter(item => item.category === category);
+  }, [state.shopItems]);
+
   return {
     state,
     addTodo,
@@ -618,5 +727,11 @@ export function useAppState() {
     getRecordsByDate,
     getMonthlyStats,
     getYearlyStats,
+    // 成就商店
+    addShopItem,
+    updateShopItem,
+    deleteShopItem,
+    purchaseShopItem,
+    getShopItemsByCategory,
   };
 }

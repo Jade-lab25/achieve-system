@@ -1,15 +1,16 @@
-import { ListTodo, Calendar, Star, Clock, Settings } from 'lucide-react';
+import { ListTodo, Calendar, Star, Clock, Settings, ShoppingCart } from 'lucide-react';
 
 interface BottomNavigationProps {
   activeTab: string;
-  onTabChange: (tab: 'todos' | 'checkin' | 'inspirations' | 'timerecords' | 'settings') => void;
+  onTabChange: (tab: 'todos' | 'checkin' | 'inspirations' | 'timerecords' | 'settings' | 'shop') => void;
 }
 
 export function BottomNavigation({ activeTab, onTabChange }: BottomNavigationProps) {
-  const tabs: { id: 'todos' | 'checkin' | 'inspirations' | 'timerecords' | 'settings'; icon: typeof ListTodo; label: string }[] = [
+  const tabs: { id: 'todos' | 'checkin' | 'inspirations' | 'timerecords' | 'settings' | 'shop'; icon: typeof ListTodo; label: string }[] = [
     { id: 'todos', icon: ListTodo, label: '待办' },
     { id: 'checkin', icon: Calendar, label: '打卡' },
     { id: 'inspirations', icon: Star, label: '事件' },
+    { id: 'shop', icon: ShoppingCart, label: '商店' },
     { id: 'timerecords', icon: Clock, label: '时间' },
     { id: 'settings', icon: Settings, label: '设置' },
   ];

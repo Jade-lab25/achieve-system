@@ -1,6 +1,6 @@
-import { Check, Clock, Timer, Trophy, Download, Lightbulb } from 'lucide-react';
+import { Check, Clock, Timer, Trophy, Download, Lightbulb, ShoppingCart } from 'lucide-react';
 
-type TabType = 'todo' | 'checkin' | 'time' | 'achievement' | 'inspiration' | 'sync';
+type TabType = 'todo' | 'checkin' | 'time' | 'achievement' | 'inspiration' | 'shop' | 'sync';
 
 interface NavigationProps {
   activeTab: TabType;
@@ -13,6 +13,7 @@ export function Navigation({ activeTab, onTabChange }: NavigationProps) {
     { id: 'checkin' as TabType, icon: Clock, label: '打卡系统' },
     { id: 'time' as TabType, icon: Timer, label: '时间记录' },
     { id: 'achievement' as TabType, icon: Trophy, label: '成就系统' },
+    { id: 'shop' as TabType, icon: ShoppingCart, label: '成就商店' },
     { id: 'inspiration' as TabType, icon: Lightbulb, label: '灵感记录' },
     { id: 'sync' as TabType, icon: Download, label: '数据同步' },
   ];

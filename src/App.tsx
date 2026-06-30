@@ -6,6 +6,7 @@ import { TodoList } from './components/TodoList';
 import { CheckInSystem } from './components/CheckInSystem';
 import { TimeRecorder } from './components/TimeRecorder';
 import { AchievementSystem } from './components/AchievementSystem';
+import { AchievementShop } from './components/AchievementShop';
 import { InspirationBoard } from './components/InspirationBoard';
 import { CalendarView } from './components/CalendarView';
 import { DataSync } from './components/DataSync';
@@ -14,8 +15,8 @@ import { Auth } from './components/Auth';
 import { useSync } from './hooks/useSync';
 import { auth as supabaseAuth } from './supabase/database';
 
-type TabType = 'todo' | 'checkin' | 'time' | 'achievement' | 'inspiration' | 'sync';
-type BottomTabType = 'todos' | 'checkin' | 'inspirations' | 'timerecords' | 'settings';
+type TabType = 'todo' | 'checkin' | 'time' | 'achievement' | 'shop' | 'inspiration' | 'sync';
+type BottomTabType = 'todos' | 'checkin' | 'inspirations' | 'timerecords' | 'settings' | 'shop';
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>('todo');
@@ -54,6 +55,10 @@ function App() {
     getRecordsByDate,
     getMonthlyStats,
     getYearlyStats,
+    // 成就商店
+    addShopItem,
+    deleteShopItem,
+    purchaseShopItem,
   } = useAppState();
 
   const { syncState, fetchFromCloud, performSync } = useSync(userId);
@@ -96,6 +101,7 @@ function App() {
       inspirations: 'inspiration',
       timerecords: 'time',
       settings: 'sync',
+      shop: 'shop',
     };
     setActiveTab(tabMap[tab]);
   };
@@ -220,6 +226,20 @@ function App() {
                 dailyStats={getDailyStats}
                 monthlyStats={getMonthlyStats}
                 yearlyStats={getYearlyStats}
+              />
+            </div>
+          </div>
+        );
+      case 'shop':
+        return (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+            <div className="lg:col-span-3">
+              <AchievementShop
+                items={state.shopItems}
+                balance={state.totalAchievements}
+                onAddItem={addShopItem}
+                onPurchase={purchaseShopItem}
+                onDeleteItem={deleteShopItem}
               />
             </div>
           </div>

@@ -1,7 +1,7 @@
 import type { CheckInRecord, TimeRecord, AchievementLog } from '../types';
 import { Calendar, Clock, Zap, ShoppingCart, CheckSquare, AlertCircle } from 'lucide-react';
 
-type TabType = 'todo' | 'checkin' | 'time' | 'achievement' | 'inspiration' | 'sync';
+type TabType = 'todo' | 'checkin' | 'time' | 'achievement' | 'inspiration' | 'sync' | 'shop';
 
 interface DateDetailProps {
   activeTab: TabType;
@@ -54,6 +54,8 @@ export function DateDetail({ activeTab, date, checkInRecords, timeRecords, achie
         return <Zap className="w-4 h-4 text-green-500" />;
       case 'commodity':
         return <ShoppingCart className="w-4 h-4 text-red-500" />;
+      case 'shop_purchase':
+        return <ShoppingCart className="w-4 h-4 text-purple-500" />;
       case 'delay':
         return <AlertCircle className="w-4 h-4 text-yellow-500" />;
       default:
@@ -69,6 +71,8 @@ export function DateDetail({ activeTab, date, checkInRecords, timeRecords, achie
         return '任务';
       case 'commodity':
         return '商品';
+      case 'shop_purchase':
+        return '商店';
       case 'delay':
         return '拖延';
       default:
@@ -240,6 +244,7 @@ export function DateDetail({ activeTab, date, checkInRecords, timeRecords, achie
                       log.type === 'todo' ? 'bg-blue-100 text-blue-600' :
                       log.type === 'task' ? 'bg-green-100 text-green-600' :
                       log.type === 'commodity' ? 'bg-red-100 text-red-600' :
+                      log.type === 'shop_purchase' ? 'bg-purple-100 text-purple-600' :
                       'bg-yellow-100 text-yellow-600'
                     }`}>
                       {getTypeLabel(log.type)}
@@ -294,6 +299,7 @@ export function DateDetail({ activeTab, date, checkInRecords, timeRecords, achie
                       <span className={`text-xs px-2 py-0.5 rounded-full ${
                         log.type === 'todo' ? 'bg-blue-100 text-blue-600' :
                         log.type === 'task' ? 'bg-green-100 text-green-600' :
+                        log.type === 'shop_purchase' ? 'bg-purple-100 text-purple-600' :
                         'bg-red-100 text-red-600'
                       }`}>
                         {getTypeLabel(log.type)}

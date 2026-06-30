@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { syncAll, fetchAll } from '../supabase/database';
-import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, Inspiration } from '../types';
+import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, Inspiration, Syncable, ShopItem } from '../types';
 import type { UserStats } from '../supabase/types';
 
 interface SyncState {
@@ -18,10 +18,20 @@ interface SyncData {
   timeRecords: TimeRecord[];
   achievementLogs: AchievementLog[];
   inspirations: Inspiration[];
+  shopItems: ShopItem[];
   userStats: Partial<UserStats>;
 }
 
 const LOCAL_STORAGE_KEY = 'work-status-app-data';
+
+/** 同步成功后清除 is_dirty 标记并设置 synced_at */
+function markSynced<T extends Syncable>(item: T, syncedAt: string): T {
+  return {
+    ...item,
+    is_dirty: false,
+    synced_at: syncedAt,
+  };
+}
 
 export function useSync(userId: string | null) {
   const [syncState, setSyncState] = useState<SyncState>({
@@ -58,7 +68,7 @@ export function useSync(userId: string | null) {
       const saved = localStorage.getItem(LOCAL_STORAGE_KEY);
       console.log('[Sync] Loading local data from key:', LOCAL_STORAGE_KEY);
       console.log('[Sync] Raw data exists:', !!saved);
-      
+
       if (saved) {
         const parsed = JSON.parse(saved);
         console.log('[Sync] Loaded data:', {
@@ -68,12 +78,13 @@ export function useSync(userId: string | null) {
           timeRecords: parsed.timeRecords?.length || 0,
           achievementLogs: parsed.achievementLogs?.length || 0,
           inspirations: parsed.inspirations?.length || 0,
+          shopItems: parsed.shopItems?.length || 0,
           totalAchievements: parsed.totalAchievements || 0
         });
 
         const timeRecords: TimeRecord[] = parsed.timeRecords || [];
         const todos: Todo[] = parsed.todos || [];
-        
+
         const recalculatedTodos = todos.map((todo: Todo) => {
           const todoRecords = timeRecords.filter((r: TimeRecord) => r.todoId === todo.id && r.endTime);
           const totalSeconds = todoRecords.reduce((sum: number, record: TimeRecord) => {
@@ -85,7 +96,7 @@ export function useSync(userId: string | null) {
           }, 0);
           return { ...todo, totalTime: totalSeconds };
         });
-        
+
         return {
           todos: recalculatedTodos,
           checkInProjects: parsed.checkInProjects || [],
@@ -93,6 +104,7 @@ export function useSync(userId: string | null) {
           timeRecords: parsed.timeRecords || [],
           achievementLogs: parsed.achievementLogs || [],
           inspirations: parsed.inspirations || [],
+          shopItems: parsed.shopItems || [],
           userStats: {
             total_achievements: parsed.totalAchievements || 0,
             total_earned: parsed.totalEarned || 0,
@@ -111,6 +123,7 @@ export function useSync(userId: string | null) {
       timeRecords: [],
       achievementLogs: [],
       inspirations: [],
+      shopItems: [],
       userStats: {}
     };
   }, []);
@@ -124,6 +137,7 @@ export function useSync(userId: string | null) {
         timeRecords: data.timeRecords,
         achievementLogs: data.achievementLogs,
         inspirations: data.inspirations,
+        shopItems: data.shopItems,
         totalAchievements: data.userStats.total_achievements || 0,
         totalEarned: data.userStats.total_earned || 0,
         totalSpent: data.userStats.total_spent || 0
@@ -143,50 +157,49 @@ export function useSync(userId: string | null) {
     setSyncState(prev => ({ ...prev, isSyncing: true, syncStatus: 'syncing', syncMessage: '正在同步数据...' }));
 
     try {
-      console.log('[Sync] Starting performSync for user:', userId);
+      const syncStartTime = Date.now();
       const localData = loadLocalData();
-      
-      console.log('[Sync] Local data to sync:', {
-        todos: localData.todos.length,
-        checkInProjects: localData.checkInProjects.length,
-        checkInRecords: localData.checkInRecords.length,
-        timeRecords: localData.timeRecords.length,
-        achievementLogs: localData.achievementLogs.length,
-        inspirations: localData.inspirations.length
-      });
-      
-      const { success, errors } = await syncAll(userId, localData);
-      console.log('[Sync] syncAll result:', { success, errors });
-      
+
+      // 统计需要同步的记录数（增量同步）
+      const dirtyCounts = {
+        todos: localData.todos.filter(t => t.is_dirty || !t.synced_at).length,
+        checkInProjects: localData.checkInProjects.filter(p => p.is_dirty || !p.synced_at).length,
+        checkInRecords: localData.checkInRecords.filter(r => r.is_dirty || !r.synced_at).length,
+        timeRecords: localData.timeRecords.filter(r => r.is_dirty || !r.synced_at).length,
+        achievementLogs: localData.achievementLogs.filter(l => l.is_dirty || !l.synced_at).length,
+        inspirations: localData.inspirations.filter(i => i.is_dirty || !i.synced_at).length,
+        shopItems: localData.shopItems.filter(s => s.is_dirty || !s.synced_at).length,
+      };
+      const totalDirty = Object.values(dirtyCounts).reduce((a, b) => a + b, 0);
+      console.log('[Sync] Incremental sync:', { totalDirty, ...dirtyCounts });
+
+      const { success, errors, stats } = await syncAll(userId, localData);
+      console.log('[Sync] syncAll result:', { success, errors, stats });
+
       if (success) {
-        const { data: remoteData, success: fetchSuccess, errors: fetchErrors } = await fetchAll(userId);
-        console.log('[Sync] fetchAll result:', { fetchSuccess, fetchErrors, data: remoteData ? {
-          todos: remoteData.todos.length,
-          checkInProjects: remoteData.checkInProjects.length,
-          checkInRecords: remoteData.checkInRecords.length,
-          timeRecords: remoteData.timeRecords.length,
-          achievementLogs: remoteData.achievementLogs.length,
-          inspirations: remoteData.inspirations.length
-        } : null });
-        
+        const { data: remoteData } = await fetchAll(userId);
+
+        const syncedAt = new Date().toISOString();
         const mergedData: SyncData = {
-          todos: mergeData(localData.todos, remoteData.todos),
-          checkInProjects: mergeData(localData.checkInProjects, remoteData.checkInProjects),
-          checkInRecords: mergeData(localData.checkInRecords, remoteData.checkInRecords),
-          timeRecords: mergeData(localData.timeRecords, remoteData.timeRecords),
-          achievementLogs: mergeData(localData.achievementLogs, remoteData.achievementLogs),
-          inspirations: mergeData(localData.inspirations, remoteData.inspirations),
+          todos: mergeData(localData.todos, remoteData.todos, syncedAt),
+          checkInProjects: mergeData(localData.checkInProjects, remoteData.checkInProjects, syncedAt),
+          checkInRecords: mergeData(localData.checkInRecords, remoteData.checkInRecords, syncedAt),
+          timeRecords: mergeData(localData.timeRecords, remoteData.timeRecords, syncedAt),
+          achievementLogs: mergeData(localData.achievementLogs, remoteData.achievementLogs, syncedAt),
+          inspirations: mergeData(localData.inspirations, remoteData.inspirations, syncedAt),
+          shopItems: mergeData(localData.shopItems, remoteData.shopItems, syncedAt),
           userStats: { ...localData.userStats, ...remoteData.userStats }
         };
 
         saveLocalData(mergedData);
-        
+
+        const syncDuration = ((Date.now() - syncStartTime) / 1000).toFixed(1);
         setSyncState(prev => ({
           ...prev,
           isSyncing: false,
           syncStatus: 'synced',
-          syncMessage: '数据同步成功',
-          lastSync: new Date().toISOString()
+          syncMessage: `同步成功，共同步 ${totalDirty} 条记录，耗时 ${syncDuration} 秒`,
+          lastSync: syncedAt
         }));
 
         return mergedData;
@@ -242,6 +255,7 @@ export function useSync(userId: string | null) {
           timeRecords: data.timeRecords,
           achievementLogs: data.achievementLogs,
           inspirations: data.inspirations,
+          shopItems: data.shopItems,
           userStats: data.userStats || {}
         });
         return { ...data, todos: recalculatedTodos };
@@ -273,25 +287,37 @@ export function useSync(userId: string | null) {
   };
 }
 
-function mergeData<T extends { id: string; synced_at?: string | null }>(local: T[], remote: T[]): T[] {
+function mergeData<T extends { id: string; synced_at?: string | null; is_dirty?: boolean }>(
+  local: T[],
+  remote: T[],
+  syncedAt: string
+): T[] {
   const merged: T[] = [];
   const seen = new Set<string>();
 
   [...remote, ...local].forEach(item => {
     if (seen.has(item.id)) return;
     seen.add(item.id);
-    
+
     const remoteItem = remote.find(r => r.id === item.id);
     const localItem = local.find(l => l.id === item.id);
 
     if (remoteItem && localItem) {
-      const remoteTime = remoteItem.synced_at ? new Date(remoteItem.synced_at).getTime() : 0;
-      const localTime = localItem.synced_at ? new Date(localItem.synced_at).getTime() : 0;
-      merged.push(localTime > remoteTime ? localItem : remoteItem);
+      // 如果本地有未同步的更改，保留本地并标记为已同步
+      if (localItem.is_dirty) {
+        merged.push(markSynced(localItem, syncedAt));
+      } else {
+        // 否则取更新的版本
+        const remoteTime = remoteItem.synced_at ? new Date(remoteItem.synced_at).getTime() : 0;
+        const localTime = localItem.synced_at ? new Date(localItem.synced_at).getTime() : 0;
+        const winner = localTime > remoteTime ? localItem : remoteItem;
+        merged.push(markSynced(winner, syncedAt));
+      }
     } else if (remoteItem) {
       merged.push(remoteItem);
     } else if (localItem) {
-      merged.push(localItem);
+      // 只有本地的新记录，标记为已同步
+      merged.push(markSynced(localItem, syncedAt));
     }
   });
 

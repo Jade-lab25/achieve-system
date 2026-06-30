@@ -1,6 +1,31 @@
 export type TodoTag = 'long-term' | 'one-time';
 
-export interface Todo {
+/** 成就商店商品分类 */
+export type ShopCategory = 'life' | 'study' | 'work' | 'entertainment' | 'other';
+
+/** 可同步实体的通用字段 */
+export interface Syncable {
+  synced_at?: string | null;
+  is_dirty?: boolean;
+}
+
+/**
+ * 成就商店商品
+ * 代表可以用成就值兑换的"小愿望"
+ */
+export interface ShopItem extends Syncable {
+  id: string;
+  name: string;                 // 商品名称
+  description: string;          // 详细描述
+  price: number;                // 所需成就值
+  category: ShopCategory;       // 分类
+  icon?: string;                // 图标名称（lucide icon）
+  isPurchased: boolean;         // 是否已购买
+  purchasedAt?: string | null;  // 购买时间
+  createdAt: string;            // 创建时间
+}
+
+export interface Todo extends Syncable {
   id: string;
   title: string;
   createdAt: string;
@@ -17,7 +42,7 @@ export interface Todo {
 
 export type CheckInType = 'task' | 'commodity';
 
-export interface CheckInProject {
+export interface CheckInProject extends Syncable {
   id: string;
   name: string;
   type: CheckInType;
@@ -25,7 +50,7 @@ export interface CheckInProject {
   createdAt: string;
 }
 
-export interface CheckInRecord {
+export interface CheckInRecord extends Syncable {
   id: string;
   projectId: string;
   projectName: string;
@@ -34,7 +59,7 @@ export interface CheckInRecord {
   createdAt: string;
 }
 
-export interface TimeRecord {
+export interface TimeRecord extends Syncable {
   id: string;
   startTime: string;
   endTime: string;
@@ -45,15 +70,16 @@ export interface TimeRecord {
   startTimestamp: number;
 }
 
-export interface AchievementLog {
+export interface AchievementLog extends Syncable {
   id: string;
-  type: 'todo' | 'task' | 'commodity';
+  type: 'todo' | 'task' | 'commodity' | 'shop_purchase';
   title: string;
   points: number;
   createdAt: string;
+  shopItemId?: string;  // 关联的商店商品ID
 }
 
-export interface Inspiration {
+export interface Inspiration extends Syncable {
   id: string;
   content: string;
   createdAt: string;
@@ -73,6 +99,7 @@ export interface AppState {
   timeRecords: TimeRecord[];
   achievementLogs: AchievementLog[];
   inspirations: Inspiration[];
+  shopItems: ShopItem[];  // 成就商店商品
   totalAchievements: number;
   totalEarned: number;
   totalSpent: number;

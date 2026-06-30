@@ -55,11 +55,12 @@ export interface TimeRecord {
 export interface AchievementLog {
   id: string;
   user_id: string;
-  type: 'todo' | 'task' | 'commodity';
+  type: 'todo' | 'task' | 'commodity' | 'shop_purchase';
   title: string;
   points: number;
   created_at: string;
   synced_at: string | null;
+  shop_item_id?: string;
 }
 
 export interface Inspiration {
@@ -77,4 +78,18 @@ export interface UserStats {
   total_earned: number;
   total_spent: number;
   updated_at: string;
+}
+
+export interface ShopItem {
+  id: string;
+  user_id: string;
+  name: string;
+  description: string;
+  price: number;
+  category: 'life' | 'study' | 'work' | 'entertainment' | 'other';
+  is_purchased: boolean;
+  purchased_at: string | null;
+  created_at: string;
+  synced_at: string | null;
+  is_dirty?: boolean;
 }

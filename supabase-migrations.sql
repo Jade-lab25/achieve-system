@@ -55,11 +55,27 @@ CREATE TABLE IF NOT EXISTS time_records (
 CREATE TABLE IF NOT EXISTS achievement_logs (
   id TEXT PRIMARY KEY,
   user_id UUID NOT NULL REFERENCES auth.users(id),
-  type TEXT NOT NULL CHECK (type IN ('todo', 'task', 'commodity')),
+  type TEXT NOT NULL CHECK (type IN ('todo', 'task', 'commodity', 'shop_purchase')),
   title TEXT NOT NULL,
   points INTEGER NOT NULL DEFAULT 0,
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-  synced_at TIMESTAMP WITH TIME ZONE
+  synced_at TIMESTAMP WITH TIME ZONE,
+  shop_item_id TEXT  -- 关联商店商品ID
+);
+
+-- 创建成就商店表
+CREATE TABLE IF NOT EXISTS shop_items (
+  id TEXT PRIMARY KEY,
+  user_id UUID NOT NULL REFERENCES auth.users(id),
+  name TEXT NOT NULL,
+  description TEXT,
+  price INTEGER NOT NULL DEFAULT 100,
+  category TEXT NOT NULL CHECK (category IN ('life', 'study', 'work', 'entertainment', 'other')) DEFAULT 'other',
+  is_purchased BOOLEAN NOT NULL DEFAULT FALSE,
+  purchased_at TIMESTAMP WITH TIME ZONE,
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
+  synced_at TIMESTAMP WITH TIME ZONE,
+  is_dirty BOOLEAN NOT NULL DEFAULT FALSE
 );
 
 -- 创建灵感记录表
@@ -89,6 +105,8 @@ CREATE INDEX IF NOT EXISTS idx_check_in_records_user_id ON check_in_records(user
 CREATE INDEX IF NOT EXISTS idx_time_records_user_id ON time_records(user_id);
 CREATE INDEX IF NOT EXISTS idx_achievement_logs_user_id ON achievement_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_inspirations_user_id ON inspirations(user_id);
+CREATE INDEX IF NOT EXISTS idx_shop_items_user_id ON shop_items(user_id);
+CREATE INDEX IF NOT EXISTS idx_shop_items_purchased ON shop_items(is_purchased);
 
 -- 启用 RLS
 ALTER TABLE todos ENABLE ROW LEVEL SECURITY;
@@ -98,6 +116,7 @@ ALTER TABLE time_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE achievement_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE inspirations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_stats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE shop_items ENABLE ROW LEVEL SECURITY;
 
 -- 创建 RLS 策略
 CREATE POLICY "Users can view their own todos" ON todos
@@ -168,3 +187,16 @@ CREATE POLICY "Users can insert their own stats" ON user_stats
 
 CREATE POLICY "Users can update their own stats" ON user_stats
   FOR UPDATE USING (auth.uid() = user_id);
+
+-- 商店商品 RLS 策略
+CREATE POLICY "Users can view their own shop items" ON shop_items
+  FOR SELECT USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can insert their own shop items" ON shop_items
+  FOR INSERT WITH CHECK (auth.uid() = user_id);
+
+CREATE POLICY "Users can update their own shop items" ON shop_items
+  FOR UPDATE USING (auth.uid() = user_id);
+
+CREATE POLICY "Users can delete their own shop items" ON shop_items
+  FOR DELETE USING (auth.uid() = user_id);
