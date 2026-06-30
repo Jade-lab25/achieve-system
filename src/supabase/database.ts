@@ -1,6 +1,7 @@
 import { supabase } from './client';
 import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, Inspiration, UserStats } from './types';
 import type { ShopItem } from '../types';
+import { isItemDirty, markSynced } from '../utils/syncState';
 
 function camelToSnake(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
@@ -44,7 +45,7 @@ async function syncTable<T extends { id: string; synced_at?: string | null; is_d
     // 增量同步：仅同步标记为 dirty 或未同步过的记录
     const itemsToSync = syncAllItems
       ? localItems
-      : localItems.filter(item => item.is_dirty || !item.synced_at);
+      : localItems.filter(item => isItemDirty(item));
 
     if (itemsToSync.length === 0) {
       return { error: null, syncedCount: 0, syncedRecords: [] };
@@ -414,15 +415,8 @@ function updateLocalSyncStatus<T extends { id: string; synced_at?: string | null
   return localItems.map(item => {
     const syncedItem = syncedMap.get(item.id);
     if (syncedItem) {
-      // 保留本地数据，只更新同步相关字段
       const syncedAt = (syncedItem as any).synced_at || (syncedItem as any).syncedAt;
-      return {
-        ...item,
-        synced_at: syncedAt,
-        syncedAt: syncedAt,
-        is_dirty: false,
-        isDirty: false,
-      };
+      return markSynced(item, syncedAt) as T;
     }
     return item;
   });
@@ -469,7 +463,7 @@ export const syncAll = async (userId: string, data: {
 
     // 3. 同步 checkInRecords - 批量插入（流水表只增不减）
     // 过滤已同步的记录（有 synced_at 且不是 dirty）
-    const unsyncedCheckInRecords = data.checkInRecords.filter(r => !r.synced_at || !r.syncedAt || r.is_dirty || r.isDirty);
+    const unsyncedCheckInRecords = data.checkInRecords.filter(r => isItemDirty(r));
     if (unsyncedCheckInRecords.length > 0) {
       const { error, insertedCount, insertedRecords } = await batchInsert('check_in_records', userId, unsyncedCheckInRecords, 500);
       if (error) errors.push(`Check-in record sync error: ${error.message}`);
@@ -478,7 +472,7 @@ export const syncAll = async (userId: string, data: {
     }
 
     // 4. 同步 timeRecords - 批量插入
-    const unsyncedTimeRecords = data.timeRecords.filter(r => !r.synced_at || !r.syncedAt || r.is_dirty || r.isDirty);
+    const unsyncedTimeRecords = data.timeRecords.filter(r => isItemDirty(r));
     if (unsyncedTimeRecords.length > 0) {
       const { error, insertedCount, insertedRecords } = await batchInsert('time_records', userId, unsyncedTimeRecords, 500);
       if (error) errors.push(`Time record sync error: ${error.message}`);
@@ -487,7 +481,7 @@ export const syncAll = async (userId: string, data: {
     }
 
     // 5. 同步 achievementLogs - 批量插入
-    const unsyncedLogs = data.achievementLogs.filter(l => !l.synced_at || !l.syncedAt || l.is_dirty || l.isDirty);
+    const unsyncedLogs = data.achievementLogs.filter(l => isItemDirty(l));
     if (unsyncedLogs.length > 0) {
       const { error, insertedCount, insertedRecords } = await batchInsert('achievement_logs', userId, unsyncedLogs, 500);
       if (error) errors.push(`Achievement log sync error: ${error.message}`);

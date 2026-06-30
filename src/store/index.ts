@@ -21,12 +21,14 @@ const initialState: AppState = {
  * 标记记录为需要同步的脏数据
  * 增量同步时只会同步 is_dirty = true 的记录
  */
-function markDirty<T>(item: T): T & { is_dirty: boolean; synced_at: null } {
+function markDirty<T extends object>(item: T): T & { is_dirty: boolean; isDirty: boolean; synced_at: null; syncedAt: null } {
   return {
     ...item,
     is_dirty: true,
-    synced_at: null,  // 清除同步时间戳
-  };
+    isDirty: true,
+    synced_at: null,
+    syncedAt: null,
+  } as T & { is_dirty: boolean; isDirty: boolean; synced_at: null; syncedAt: null };
 }
 
 /**

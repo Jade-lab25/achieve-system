@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { syncAll, fetchAll } from '../supabase/database';
 import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, Inspiration, Syncable, ShopItem } from '../types';
 import type { UserStats } from '../supabase/types';
+import { markSynced as markSyncedState, isItemDirty } from '../utils/syncState';
 
 interface SyncState {
   isOnline: boolean;
@@ -26,11 +27,7 @@ const LOCAL_STORAGE_KEY = 'work-status-app-data';
 
 /** 同步成功后清除 is_dirty 标记并设置 synced_at */
 function markSynced<T extends Syncable>(item: T, syncedAt: string): T {
-  return {
-    ...item,
-    is_dirty: false,
-    synced_at: syncedAt,
-  };
+  return markSyncedState(item, syncedAt) as T;
 }
 
 interface SyncOptions {
@@ -146,16 +143,28 @@ export function useSync(userId: string | null, options?: SyncOptions) {
 
       // 统计需要同步的记录数（增量同步）
       const dirtyCounts = {
-        todos: localData.todos.filter(t => t.is_dirty || t.isDirty || !t.synced_at || !t.syncedAt).length,
-        checkInProjects: localData.checkInProjects.filter(p => p.is_dirty || p.isDirty || !p.synced_at || !p.syncedAt).length,
-        checkInRecords: localData.checkInRecords.filter(r => r.is_dirty || r.isDirty || !r.synced_at || !r.syncedAt).length,
-        timeRecords: localData.timeRecords.filter(r => r.is_dirty || r.isDirty || !r.synced_at || !r.syncedAt).length,
-        achievementLogs: localData.achievementLogs.filter(l => l.is_dirty || l.isDirty || !l.synced_at || !l.syncedAt).length,
-        inspirations: localData.inspirations.filter(i => i.is_dirty || i.isDirty || !i.synced_at || !i.syncedAt).length,
-        shopItems: localData.shopItems.filter(s => s.is_dirty || s.isDirty || !s.synced_at || !s.syncedAt).length,
+        todos: localData.todos.filter(t => isItemDirty(t)).length,
+        checkInProjects: localData.checkInProjects.filter(p => isItemDirty(p)).length,
+        checkInRecords: localData.checkInRecords.filter(r => isItemDirty(r)).length,
+        timeRecords: localData.timeRecords.filter(r => isItemDirty(r)).length,
+        achievementLogs: localData.achievementLogs.filter(l => isItemDirty(l)).length,
+        inspirations: localData.inspirations.filter(i => isItemDirty(i)).length,
+        shopItems: localData.shopItems.filter(s => isItemDirty(s)).length,
       };
       const totalDirty = Object.values(dirtyCounts).reduce((a, b) => a + b, 0);
       console.log('[Sync] Incremental sync:', { totalDirty, ...dirtyCounts });
+
+      // ✅ 没有脏数据需要同步时，跳过 fetchAll 避免触发 onDataFetched 导致循环
+      if (totalDirty === 0) {
+        console.log('[Sync] No dirty records, skipping sync');
+        setSyncState(prev => ({
+          ...prev,
+          isSyncing: false,
+          syncStatus: 'synced',
+          syncMessage: '没有需要同步的数据',
+        }));
+        return null;
+      }
 
       const { success, errors, stats, syncedData } = await syncAll(userId, localData);
       console.log('[Sync] syncAll result:', { success, errors, stats });
@@ -280,6 +289,12 @@ export function useSync(userId: string | null, options?: SyncOptions) {
         clearTimeout(syncTimeoutRef.current);
       }
       syncTimeoutRef.current = window.setTimeout(() => {
+        // ✅ 守卫：正在同步中时不触发新的同步
+        setSyncState(prev => {
+          if (prev.isSyncing) return prev; // 正在同步中，跳过
+          return prev;
+        });
+        // 如果 isSyncing 为 true，performSync 内部会再次检查 dirty count
         performSync(userId!);
       }, 1500);
     }
@@ -334,9 +349,7 @@ function mergeData<T extends { id: string; synced_at?: string | null; syncedAt?:
     const val = (item as any).synced_at || (item as any).syncedAt;
     return val ? new Date(val).getTime() : 0;
   };
-  const isDirty = (item: T): boolean => {
-    return (item as any).is_dirty || (item as any).isDirty || false;
-  };
+  const isDirty = (item: T): boolean => isItemDirty(item);
 
   // ✅ 云端优先：确保云端已同步的最新数据优先被采用
   [...remote, ...local].forEach(item => {
