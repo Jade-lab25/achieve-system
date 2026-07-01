@@ -4,6 +4,7 @@ import type { ShopItem } from '../types';
 import { isItemDirty, markSynced } from '../utils/syncState';
 import { getSyncModeForTable } from '../utils/syncModes';
 import { splitInsertOnlyRecords } from '../utils/insertOnlySync';
+import { sanitizeForSync } from '../utils/syncPayload';
 
 function camelToSnake(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
@@ -23,15 +24,6 @@ function snakeToCamel(obj: any): any {
     result[camelKey] = obj[key];
   }
   return result;
-}
-
-function sanitizeForSync<T extends Record<string, any>>(record: T, userId: string, syncedAt: string) {
-  const { is_dirty, isDirty, synced_at, syncedAt: _syncedAt, ...rest } = record as any;
-  return {
-    ...camelToSnake(rest),
-    user_id: userId,
-    synced_at: syncedAt,
-  };
 }
 
 /**
@@ -69,7 +61,7 @@ async function syncTable<T extends { id: string; synced_at?: string | null; is_d
       const batch = itemsToSync.slice(i, i + batchSize);
       const now = new Date().toISOString();
 
-      const records = batch.map(item => sanitizeForSync(item, userId, now));
+      const records = batch.map(item => sanitizeForSync(item, userId, now, tableName));
 
       const { data, error } = await supabase
         .from(tableName)
@@ -132,7 +124,7 @@ async function batchInsert<T extends { id: string }>(
         continue;
       }
 
-      const recordsToInsertPayload = recordsToInsert.map(record => sanitizeForSync(record, userId, now));
+      const recordsToInsertPayload = recordsToInsert.map(record => sanitizeForSync(record, userId, now, tableName));
 
       const { data, error } = await supabase
         .from(tableName)

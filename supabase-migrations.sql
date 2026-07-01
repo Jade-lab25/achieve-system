@@ -200,3 +200,22 @@ CREATE POLICY "Users can update their own shop items" ON shop_items
 
 CREATE POLICY "Users can delete their own shop items" ON shop_items
   FOR DELETE USING (auth.uid() = user_id);
+
+-- Compatibility upgrades for existing Supabase projects.
+ALTER TABLE achievement_logs
+  DROP CONSTRAINT IF EXISTS achievement_logs_type_check;
+
+ALTER TABLE achievement_logs
+  ADD CONSTRAINT achievement_logs_type_check
+  CHECK (type IN ('todo', 'task', 'commodity', 'shop_purchase'));
+
+ALTER TABLE achievement_logs
+  ADD COLUMN IF NOT EXISTS shop_item_id TEXT;
+
+ALTER TABLE shop_items
+  ADD COLUMN IF NOT EXISTS is_purchased BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE shop_items
+  ADD COLUMN IF NOT EXISTS purchased_at TIMESTAMP WITH TIME ZONE;
+
+CREATE INDEX IF NOT EXISTS idx_shop_items_purchased ON shop_items(is_purchased);
