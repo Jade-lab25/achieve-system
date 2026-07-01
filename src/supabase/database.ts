@@ -3,6 +3,7 @@ import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, I
 import type { ShopItem } from '../types';
 import { isItemDirty, markSynced } from '../utils/syncState';
 import { getSyncModeForTable } from '../utils/syncModes';
+import { splitInsertOnlyRecords } from '../utils/insertOnlySync';
 
 function camelToSnake(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
@@ -113,31 +114,33 @@ async function batchInsert<T extends { id: string }>(
 
     for (let i = 0; i < records.length; i += batchSize) {
       const batch = records.slice(i, i + batchSize);
-      const recordsToInsert = batch.map(record => sanitizeForSync(record, userId, now));
+      const ids = batch.map(record => record.id);
+      const { data: existing, error: existingError } = await supabase
+        .from(tableName)
+        .select('*')
+        .in('id', ids)
+        .eq('user_id', userId);
+
+      if (existingError) {
+        throw existingError;
+      }
+
+      const { existingRecords, recordsToInsert } = splitInsertOnlyRecords(batch, existing);
+      allInserted.push(...existingRecords);
+
+      if (recordsToInsert.length === 0) {
+        continue;
+      }
+
+      const recordsToInsertPayload = recordsToInsert.map(record => sanitizeForSync(record, userId, now));
 
       const { data, error } = await supabase
         .from(tableName)
-        .insert(recordsToInsert)
+        .insert(recordsToInsertPayload)
         .select();
 
       if (error) {
-        if (error.message.includes('duplicate key')) {
-          // ✅ 记录已存在于云端，从数据库获取其 synced_at 时间戳
-          //    防止这些记录因无法插入而永远保持 dirty 状态导致无限同步循环
-          const ids = batch.map(r => (r as any).id);
-          const { data: existing } = await supabase
-            .from(tableName)
-            .select('*')
-            .in('id', ids)
-            .eq('user_id', userId);
-
-          if (existing) {
-            allInserted.push(...existing);
-          }
-          console.log(`[DB] ${tableName}: ${existing?.length || 0} records already exist in cloud, marked as synced`);
-        } else {
-          throw error;
-        }
+        throw error;
       } else if (data) {
         allInserted.push(...data);
       }

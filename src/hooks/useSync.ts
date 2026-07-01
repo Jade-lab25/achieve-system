@@ -202,17 +202,49 @@ export function useSync(userId: string | null, options?: SyncOptions) {
       const totalDirty = Object.values(dirtyCounts).reduce((a, b) => a + b, 0);
       console.log('[Sync] Incremental sync:', { totalDirty, ...dirtyCounts, deletedFromCloud: totalDeletedFromCloud });
 
-      // ✅ 没有脏数据也没有删除操作时，跳过
+      // 没有本地变更时，手动同步仍然需要拉取其他设备的新记录。
       if (totalDirty === 0 && totalDeletedFromCloud === 0) {
-        console.log('[Sync] No dirty records or deletions, skipping sync');
+        console.log('[Sync] No dirty records or deletions, fetching remote changes');
+        const { data: remoteData, success, errors } = await fetchAll(userId);
+        const syncedAtStr = new Date().toISOString();
+
+        if (!success) {
+          isSyncingRef.current = false;
+          setSyncState(prev => ({
+            ...prev,
+            isSyncing: false,
+            syncStatus: 'error',
+            syncMessage: `同步失败: ${errors.join(', ')}`
+          }));
+          return null;
+        }
+
+        const mergedData: SyncData = {
+          todos: mergeData(localData.todos, remoteData.todos, syncedAtStr, false),
+          checkInProjects: mergeData(localData.checkInProjects, remoteData.checkInProjects, syncedAtStr, false),
+          checkInRecords: mergeData(localData.checkInRecords, remoteData.checkInRecords, syncedAtStr, false),
+          timeRecords: mergeData(localData.timeRecords, remoteData.timeRecords, syncedAtStr, false),
+          achievementLogs: mergeData(localData.achievementLogs, remoteData.achievementLogs, syncedAtStr, false),
+          inspirations: mergeData(localData.inspirations, remoteData.inspirations, syncedAtStr, false),
+          shopItems: mergeData(localData.shopItems, remoteData.shopItems, syncedAtStr, false),
+          userStats: { ...localData.userStats, ...remoteData.userStats }
+        };
+
+        saveLocalData(mergedData);
+        if (options?.onDataFetched) {
+          options.onDataFetched(mergedData);
+        }
+
+        const syncDuration = ((Date.now() - syncStartTime) / 1000).toFixed(1);
         isSyncingRef.current = false;
         setSyncState(prev => ({
           ...prev,
           isSyncing: false,
           syncStatus: 'synced',
-          syncMessage: '没有需要同步的数据',
+          syncMessage: `已拉取云端最新数据，耗时 ${syncDuration} 秒`,
+          lastSync: syncedAtStr
         }));
-        return null;
+        return mergedData;
       }
 
       const { success, errors, stats, syncedData } = await syncAll(userId, localData);
