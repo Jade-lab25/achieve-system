@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, AppState, CheckInType, Inspiration, Syncable, ShopItem, ShopCategory } from '../types';
 import { addDeletedId, addDeletedIds } from '../utils/syncState';
+import { prepareImportedState } from '../utils/importState';
 
 const STORAGE_KEY = 'work-status-app-data';
 
@@ -440,6 +441,8 @@ export function useAppState() {
         tag: 'one-time',
       });
 
+      addDeletedId('inspirations', id);
+
       return {
         ...prev,
         inspirations: prev.inspirations.filter(i => i.id !== id),
@@ -467,41 +470,7 @@ export function useAppState() {
   const importData = useCallback((data: string) => {
     try {
       const parsed = JSON.parse(data);
-      const logs = parsed.achievementLogs || [];
-      
-      const totalEarned = logs
-        .filter((log: AchievementLog) => log.type === 'task')
-        .reduce((sum: number, log: AchievementLog) => sum + (log.points || 0), 0);
-      
-      const totalSpent = logs
-        .filter((log: AchievementLog) => log.type === 'commodity')
-        .reduce((sum: number, log: AchievementLog) => sum + (log.points || 0), 0);
-      
-      const totalAchievements = totalEarned - totalSpent;
-
-      const timeRecords: TimeRecord[] = parsed.timeRecords || [];
-      const todos: Todo[] = parsed.todos || [];
-      
-      const recalculatedTodos = todos.map((todo: Todo) => {
-        const todoRecords = timeRecords.filter((r: TimeRecord) => r.todoId === todo.id && r.endTime);
-        const totalSeconds = todoRecords.reduce((sum: number, record: TimeRecord) => {
-          if (record.startTimestamp && record.endTime) {
-            const endTime = new Date(record.endTime).getTime();
-            return sum + (endTime - record.startTimestamp) / 1000;
-          }
-          return sum;
-        }, 0);
-        return { ...todo, totalTime: totalSeconds };
-      });
-      
-      setState({ 
-        ...initialState, 
-        ...parsed,
-        todos: recalculatedTodos,
-        totalAchievements,
-        totalEarned,
-        totalSpent
-      });
+      setState(prepareImportedState(parsed, initialState));
       return true;
     } catch {
       return false;

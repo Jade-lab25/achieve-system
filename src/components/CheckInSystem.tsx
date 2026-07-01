@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { CheckInProject, CheckInRecord, CheckInType } from '../types';
 import { Clock, Plus, Trash2, Zap, ShoppingCart } from 'lucide-react';
+import { getCheckInProjectStats } from '../utils/checkInStats';
 
 interface CheckInSystemProps {
   projects: CheckInProject[];
@@ -37,15 +38,6 @@ export function CheckInSystem({ projects, records, onAddProject, onDeleteProject
     });
   };
 
-  const getProjectStats = (projectId: string) => {
-    const projectRecords = records.filter(r => r.projectId === projectId);
-    const lastCheckIn = projectRecords[0]?.createdAt || null;
-    return {
-      count: projectRecords.length,
-      lastCheckIn,
-    };
-  };
-
   return (
     <div className="bg-white rounded-xl shadow-sm p-6">
       <div className="flex items-center justify-between mb-4">
@@ -67,7 +59,7 @@ export function CheckInSystem({ projects, records, onAddProject, onDeleteProject
           <p className="text-gray-400 text-center py-8">暂无打卡项目</p>
         ) : (
           projects.map(project => {
-            const stats = getProjectStats(project.id);
+            const stats = getCheckInProjectStats(project, records);
             return (
               <div
                 key={project.id}

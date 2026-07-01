@@ -2,6 +2,7 @@ import { supabase } from './client';
 import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, Inspiration, UserStats } from './types';
 import type { ShopItem } from '../types';
 import { isItemDirty, markSynced } from '../utils/syncState';
+import { getSyncModeForTable } from '../utils/syncModes';
 
 function camelToSnake(obj: any): any {
   if (!obj || typeof obj !== 'object') return obj;
@@ -519,13 +520,20 @@ export const syncAll = async (userId: string, data: {
       insertedCheckInRecords = insertedRecords;
     }
 
-    // 4. 同步 timeRecords - 批量插入
+    // 4. 同步 timeRecords - 可变记录，开始后还会更新 endTime/note，必须 upsert
     const unsyncedTimeRecords = data.timeRecords.filter(r => isItemDirty(r));
     if (unsyncedTimeRecords.length > 0) {
-      const { error, insertedCount, insertedRecords } = await batchInsert('time_records', userId, unsyncedTimeRecords, 500);
-      if (error) errors.push(`Time record sync error: ${error.message}`);
-      syncResults.timeRecords = insertedCount;
-      insertedTimeRecords = insertedRecords;
+      if (getSyncModeForTable('time_records') === 'upsert') {
+        const { error, syncedCount, syncedRecords } = await syncTable('time_records', userId, unsyncedTimeRecords, 500, true);
+        if (error) errors.push(`Time record sync error: ${error.message}`);
+        syncResults.timeRecords = syncedCount;
+        insertedTimeRecords = syncedRecords;
+      } else {
+        const { error, insertedCount, insertedRecords } = await batchInsert('time_records', userId, unsyncedTimeRecords, 500);
+        if (error) errors.push(`Time record sync error: ${error.message}`);
+        syncResults.timeRecords = insertedCount;
+        insertedTimeRecords = insertedRecords;
+      }
     }
 
     // 5. 同步 achievementLogs - 批量插入
