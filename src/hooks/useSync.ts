@@ -229,8 +229,11 @@ export function useSync(userId: string | null, options?: SyncOptions) {
 
         saveLocalData(mergedData);
 
-        // ✅ performSync 不需要更新 React state —— 数据已经在 UI 中了
-        // 调用 onDataFetched 会导致 syncOnChange → performSync 循环
+        // ✅ 更新 React state，让从云端下载的其他设备数据能显示在 UI 中
+        //    防止下次 syncOnChange 用旧 state 覆盖 localStorage
+        if (options?.onDataFetched) {
+          options.onDataFetched(mergedData);
+        }
 
         const syncDuration = ((Date.now() - syncStartTime) / 1000).toFixed(1);
         isSyncingRef.current = false;
@@ -330,7 +333,18 @@ export function useSync(userId: string | null, options?: SyncOptions) {
   const syncOnChange = useCallback(async (userId: string | null, data: SyncData) => {
     saveLocalData(data);
 
-    if (userId && navigator.onLine && !isSyncingRef.current) {
+    // ✅ 检查是否有脏数据需要上传（防止不必要的 performSync 调用）
+    const hasDirtyData = (
+      data.todos.some(t => isItemDirty(t)) ||
+      data.checkInProjects.some(p => isItemDirty(p)) ||
+      data.checkInRecords.some(r => isItemDirty(r)) ||
+      data.timeRecords.some(r => isItemDirty(r)) ||
+      data.achievementLogs.some(l => isItemDirty(l)) ||
+      data.inspirations.some(i => isItemDirty(i)) ||
+      data.shopItems.some(s => isItemDirty(s))
+    );
+
+    if (userId && navigator.onLine && !isSyncingRef.current && hasDirtyData) {
       // ✅ 防抖：清除之前的定时器，防止快速连续操作触发多次同步
       if (syncTimeoutRef.current) {
         clearTimeout(syncTimeoutRef.current);
