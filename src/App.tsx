@@ -104,7 +104,8 @@ function App() {
     checkAuth();
   }, [fetchFromCloud]);
 
-  // ✅ 当 state 变化时触发同步（自动保存 + 延迟上传）
+  // ✅ 当 state 变化时触发本地保存（手动同步模式：数据只保存到本地，不上传云端）
+  // 用户需要手动点击"上传到云端"或"从云端下载"按钮进行同步
   useEffect(() => {
     syncOnChange(userId, state);
   }, [userId, state, syncOnChange]);

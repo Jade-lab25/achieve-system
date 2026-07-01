@@ -341,30 +341,13 @@ export function useSync(userId: string | null, options?: SyncOptions) {
     return loadLocalData();
   }, [loadLocalData, saveLocalData, options]);
 
-  const syncOnChange = useCallback(async (userId: string | null, data: SyncData) => {
+  // ✅ 手动同步模式：只保存本地数据，不自动同步
+  // 用户需要手动点击同步按钮才能上传/下载数据
+  const syncOnChange = useCallback((_userId: string | null, data: SyncData) => {
     saveLocalData(data);
-
-    // ✅ 检查是否有脏数据需要上传（防止不必要的 performSync 调用）
-    const hasDirtyData = (
-      data.todos.some(t => isItemDirty(t)) ||
-      data.checkInProjects.some(p => isItemDirty(p)) ||
-      data.checkInRecords.some(r => isItemDirty(r)) ||
-      data.timeRecords.some(r => isItemDirty(r)) ||
-      data.achievementLogs.some(l => isItemDirty(l)) ||
-      data.inspirations.some(i => isItemDirty(i)) ||
-      data.shopItems.some(s => isItemDirty(s))
-    );
-
-    if (userId && navigator.onLine && !isSyncingRef.current && hasDirtyData) {
-      // ✅ 防抖：清除之前的定时器，防止快速连续操作触发多次同步
-      if (syncTimeoutRef.current) {
-        clearTimeout(syncTimeoutRef.current);
-      }
-      syncTimeoutRef.current = window.setTimeout(() => {
-        performSync(userId!);
-      }, 1500);
-    }
-  }, [saveLocalData, performSync]);
+    // 📝 已移除自动同步逻辑：不再根据脏数据状态自动触发 performSync
+    // 如需自动同步，可在此处恢复定时器逻辑
+  }, [saveLocalData]);
 
   // ✅ 同步消息 5 秒后自动消失
   useEffect(() => {
