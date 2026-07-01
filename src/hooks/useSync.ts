@@ -210,20 +210,22 @@ export function useSync(userId: string | null, options?: SyncOptions) {
       console.log('[Sync] syncAll result:', { success, errors, stats });
 
       if (success) {
-        // ✅ 关键修复：先更新本地记录的同步状态（清除 is_dirty，设置 synced_at）
+        // ✅ 关键修复：先从云端拉取所有数据（包括其他设备新增的记录）
         const { data: remoteData } = await fetchAll(userId);
 
         const syncedAtStr = new Date().toISOString();
-        // ✅ updateLocalSyncStatus 已在上传成功后清除 dirty 标记
-        //    mergeData 不需要再 markSynced（避免误清理上传失败的记录）
+        // ✅ 修复同步无限循环：
+        //    syncedData 已经是 syncAll 返回的、清除了脏标记的数据
+        //    现在只需要用 remoteData 补充本地没有的、其他设备新增的记录
+        //    shouldMarkSynced = true，确保云端来的新记录有完整的同步字段
         const mergedData: SyncData = {
-          todos: mergeData(syncedData.todos, remoteData.todos, syncedAtStr, false),
-          checkInProjects: mergeData(syncedData.checkInProjects, remoteData.checkInProjects, syncedAtStr, false),
-          checkInRecords: mergeData(syncedData.checkInRecords, remoteData.checkInRecords, syncedAtStr, false),
-          timeRecords: mergeData(syncedData.timeRecords, remoteData.timeRecords, syncedAtStr, false),
-          achievementLogs: mergeData(syncedData.achievementLogs, remoteData.achievementLogs, syncedAtStr, false),
-          inspirations: mergeData(syncedData.inspirations, remoteData.inspirations, syncedAtStr, false),
-          shopItems: mergeData(syncedData.shopItems, remoteData.shopItems, syncedAtStr, false),
+          todos: mergeData(syncedData.todos, remoteData.todos, syncedAtStr, true),
+          checkInProjects: mergeData(syncedData.checkInProjects, remoteData.checkInProjects, syncedAtStr, true),
+          checkInRecords: mergeData(syncedData.checkInRecords, remoteData.checkInRecords, syncedAtStr, true),
+          timeRecords: mergeData(syncedData.timeRecords, remoteData.timeRecords, syncedAtStr, true),
+          achievementLogs: mergeData(syncedData.achievementLogs, remoteData.achievementLogs, syncedAtStr, true),
+          inspirations: mergeData(syncedData.inspirations, remoteData.inspirations, syncedAtStr, true),
+          shopItems: mergeData(syncedData.shopItems, remoteData.shopItems, syncedAtStr, true),
           userStats: { ...syncedData.userStats, ...remoteData.userStats }
         };
 
@@ -451,7 +453,9 @@ function mergeData<T extends { id: string; synced_at?: string | null; syncedAt?:
     if (remoteItem && localItem) {
       // 如果本地有未同步的更改，保留本地
       if (isDirty(localItem)) {
-        // ✅ fetchFromCloud 不应标记为已同步（数据尚未上传）
+        // ✅ 关键修复：
+        //    performSync: shouldMarkSynced=true，表示 syncAll 已上传成功，必须清除脏标记（防止无限循环！）
+        //    fetchFromCloud: shouldMarkSynced=false，只下载不上传，保留本地脏标记避免误判
         merged.push(shouldMarkSynced ? markSynced(localItem, syncedAtStr) : localItem);
       } else {
         // 否则取更新的版本（比较 synced_at/syncedAt 时间）
@@ -462,11 +466,13 @@ function mergeData<T extends { id: string; synced_at?: string | null; syncedAt?:
         merged.push(normalizeSyncFields(winner));
       }
     } else if (remoteItem) {
-      // 只有云端的记录，直接用（补充缺失的 synced_at）
+      // ✅ 只有云端的记录（其他设备新增的！），直接用并补充缺失的同步字段
+      //    这确保了多端设备新增的数据能正确同步到本地
       merged.push(normalizeSyncFields(remoteItem));
     } else if (localItem) {
       // 只有本地的新记录
-      // ✅ fetchFromCloud 不应标记为已同步（数据尚未上传）
+      // ✅ performSync 中调用 mergeData 时 shouldMarkSynced=true 表示已上传成功
+      //    fetchFromCloud 中调用时 shouldMarkSynced=false 表示还没上传，保留脏标记
       merged.push(shouldMarkSynced ? markSynced(localItem, syncedAtStr) : localItem);
     }
   });
