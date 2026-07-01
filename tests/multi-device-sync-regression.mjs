@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { getCheckInProjectStats } from '../src/utils/checkInStats.ts';
 import { getSyncModeForTable } from '../src/utils/syncModes.ts';
 import { splitInsertOnlyRecords } from '../src/utils/insertOnlySync.ts';
+import { shouldDropSyncedLocalOnlyRecord } from '../src/utils/remoteDeletionSync.ts';
 
 const project = {
   id: 'device-a-project',
@@ -67,6 +68,25 @@ assert.deepEqual(
   split.existingRecords.map(record => record.id),
   ['already-in-cloud'],
   'existing records should be returned so local dirty flags can be cleared',
+);
+
+assert.equal(
+  shouldDropSyncedLocalOnlyRecord({
+    id: 'deleted-in-cloud',
+    syncedAt: '2026-07-01T08:00:00.000Z',
+    isDirty: false,
+  }, true),
+  true,
+  'a clean local record that was previously synced should disappear when it is missing from remote data',
+);
+assert.equal(
+  shouldDropSyncedLocalOnlyRecord({
+    id: 'local-unsynced',
+    syncedAt: null,
+    isDirty: true,
+  }, true),
+  false,
+  'a local unsynced record must be preserved when downloading remote data',
 );
 
 console.log('multi-device sync regression tests passed');

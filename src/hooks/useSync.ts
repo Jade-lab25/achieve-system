@@ -4,6 +4,7 @@ import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, I
 import type { UserStats } from '../supabase/types';
 import { markSynced as markSyncedState, isItemDirty, getDeletedIds, clearDeletedIds } from '../utils/syncState';
 import type { DeletedIdsCategory } from '../utils/syncState';
+import { shouldDropSyncedLocalOnlyRecord } from '../utils/remoteDeletionSync';
 
 interface SyncState {
   isOnline: boolean;
@@ -220,13 +221,13 @@ export function useSync(userId: string | null, options?: SyncOptions) {
         }
 
         const mergedData: SyncData = {
-          todos: mergeData(localData.todos, remoteData.todos, syncedAtStr, false),
-          checkInProjects: mergeData(localData.checkInProjects, remoteData.checkInProjects, syncedAtStr, false),
+          todos: mergeData(localData.todos, remoteData.todos, syncedAtStr, false, true),
+          checkInProjects: mergeData(localData.checkInProjects, remoteData.checkInProjects, syncedAtStr, false, true),
           checkInRecords: mergeData(localData.checkInRecords, remoteData.checkInRecords, syncedAtStr, false),
           timeRecords: mergeData(localData.timeRecords, remoteData.timeRecords, syncedAtStr, false),
           achievementLogs: mergeData(localData.achievementLogs, remoteData.achievementLogs, syncedAtStr, false),
-          inspirations: mergeData(localData.inspirations, remoteData.inspirations, syncedAtStr, false),
-          shopItems: mergeData(localData.shopItems, remoteData.shopItems, syncedAtStr, false),
+          inspirations: mergeData(localData.inspirations, remoteData.inspirations, syncedAtStr, false, true),
+          shopItems: mergeData(localData.shopItems, remoteData.shopItems, syncedAtStr, false, true),
           userStats: { ...localData.userStats, ...remoteData.userStats }
         };
 
@@ -260,13 +261,13 @@ export function useSync(userId: string | null, options?: SyncOptions) {
         //    现在只需要用 remoteData 补充本地没有的、其他设备新增的记录
         //    shouldMarkSynced = true，确保云端来的新记录有完整的同步字段
         const mergedData: SyncData = {
-          todos: mergeData(syncedData.todos, remoteData.todos, syncedAtStr, true),
-          checkInProjects: mergeData(syncedData.checkInProjects, remoteData.checkInProjects, syncedAtStr, true),
+          todos: mergeData(syncedData.todos, remoteData.todos, syncedAtStr, true, true),
+          checkInProjects: mergeData(syncedData.checkInProjects, remoteData.checkInProjects, syncedAtStr, true, true),
           checkInRecords: mergeData(syncedData.checkInRecords, remoteData.checkInRecords, syncedAtStr, true),
           timeRecords: mergeData(syncedData.timeRecords, remoteData.timeRecords, syncedAtStr, true),
           achievementLogs: mergeData(syncedData.achievementLogs, remoteData.achievementLogs, syncedAtStr, true),
-          inspirations: mergeData(syncedData.inspirations, remoteData.inspirations, syncedAtStr, true),
-          shopItems: mergeData(syncedData.shopItems, remoteData.shopItems, syncedAtStr, true),
+          inspirations: mergeData(syncedData.inspirations, remoteData.inspirations, syncedAtStr, true, true),
+          shopItems: mergeData(syncedData.shopItems, remoteData.shopItems, syncedAtStr, true, true),
           userStats: { ...syncedData.userStats, ...remoteData.userStats }
         };
 
@@ -346,13 +347,13 @@ export function useSync(userId: string | null, options?: SyncOptions) {
         //    防止本地未上传的 dirty 记录被错误标记为已同步
         const syncedAt = new Date().toISOString();
         const mergedData: SyncData = {
-          todos: mergeData(localData.todos, recalculatedTodos, syncedAt, false),
-          checkInProjects: mergeData(localData.checkInProjects, data.checkInProjects, syncedAt, false),
+          todos: mergeData(localData.todos, recalculatedTodos, syncedAt, false, true),
+          checkInProjects: mergeData(localData.checkInProjects, data.checkInProjects, syncedAt, false, true),
           checkInRecords: mergeData(localData.checkInRecords, data.checkInRecords, syncedAt, false),
           timeRecords: mergeData(localData.timeRecords, data.timeRecords, syncedAt, false),
           achievementLogs: mergeData(localData.achievementLogs, data.achievementLogs, syncedAt, false),
-          inspirations: mergeData(localData.inspirations, data.inspirations, syncedAt, false),
-          shopItems: mergeData(localData.shopItems, data.shopItems, syncedAt, false),
+          inspirations: mergeData(localData.inspirations, data.inspirations, syncedAt, false, true),
+          shopItems: mergeData(localData.shopItems, data.shopItems, syncedAt, false, true),
           userStats: { ...localData.userStats, ...data.userStats }
         };
 
@@ -441,7 +442,8 @@ function mergeData<T extends { id: string; synced_at?: string | null; syncedAt?:
   local: T[],
   remote: T[],
   syncedAtStr: string,
-  shouldMarkSynced: boolean = true
+  shouldMarkSynced: boolean = true,
+  dropSyncedLocalOnly: boolean = false
 ): T[] {
   const merged: T[] = [];
   const seen = new Set<string>();
@@ -494,6 +496,9 @@ function mergeData<T extends { id: string; synced_at?: string | null; syncedAt?:
       //    这确保了多端设备新增的数据能正确同步到本地
       merged.push(normalizeSyncFields(remoteItem));
     } else if (localItem) {
+      if (shouldDropSyncedLocalOnlyRecord(localItem, dropSyncedLocalOnly)) {
+        return;
+      }
       // 只有本地的新记录
       // ✅ performSync 中调用 mergeData 时 shouldMarkSynced=true 表示已上传成功
       //    fetchFromCloud 中调用时 shouldMarkSynced=false 表示还没上传，保留脏标记
