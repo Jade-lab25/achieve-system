@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, AppState, CheckInType, Inspiration, Syncable, ShopItem, ShopCategory } from '../types';
+import { addDeletedId, addDeletedIds } from '../utils/syncState';
 
 const STORAGE_KEY = 'work-status-app-data';
 
@@ -156,11 +157,18 @@ export function useAppState() {
   }, []);
 
   const deleteTodo = useCallback((id: string) => {
+    addDeletedId('todos', id);
     setState(prev => ({ ...prev, todos: prev.todos.filter(t => t.id !== id) }));
   }, []);
 
   const clearCompletedTodos = useCallback(() => {
-    setState(prev => ({ ...prev, todos: prev.todos.filter(t => !t.isCompleted) }));
+    setState(prev => {
+      const completedIds = prev.todos.filter(t => t.isCompleted).map(t => t.id);
+      if (completedIds.length > 0) {
+        addDeletedIds('todos', completedIds);
+      }
+      return { ...prev, todos: prev.todos.filter(t => !t.isCompleted) };
+    });
   }, []);
 
   const toggleDelayTodo = useCallback((id: string) => {
@@ -277,12 +285,18 @@ export function useAppState() {
   }, []);
 
   const deleteCheckInProject = useCallback((id: string) => {
+    addDeletedId('checkInProjects', id);
+    // 同时删除关联的打卡记录
+    const associatedIds = state.checkInRecords.filter(r => r.projectId === id).map(r => r.id);
+    if (associatedIds.length > 0) {
+      addDeletedIds('checkInRecords', associatedIds);
+    }
     setState(prev => ({
       ...prev,
       checkInProjects: prev.checkInProjects.filter(p => p.id !== id),
       checkInRecords: prev.checkInRecords.filter(r => r.projectId !== id),
     }));
-  }, []);
+  }, [state.checkInRecords]);
 
   const checkIn = useCallback((projectId: string) => {
     setState(prev => {
@@ -337,6 +351,7 @@ export function useAppState() {
   }, []);
 
   const deleteTimeRecord = useCallback((id: string) => {
+    addDeletedId('timeRecords', id);
     setState(prev => ({ ...prev, timeRecords: prev.timeRecords.filter(r => r.id !== id) }));
   }, []);
 
@@ -394,6 +409,7 @@ export function useAppState() {
   }, []);
 
   const deleteInspiration = useCallback((id: string) => {
+    addDeletedId('inspirations', id);
     setState(prev => ({ ...prev, inspirations: prev.inspirations.filter(i => i.id !== id) }));
   }, []);
 
@@ -648,6 +664,7 @@ export function useAppState() {
 
   /** 删除商店商品 */
   const deleteShopItem = useCallback((id: string) => {
+    addDeletedId('shopItems', id);
     setState(prev => ({
       ...prev,
       shopItems: prev.shopItems.filter(item => item.id !== id),

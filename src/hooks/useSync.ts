@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { syncAll, fetchAll } from '../supabase/database';
+import { syncAll, fetchAll, deleteBatch } from '../supabase/database';
 import type { Todo, CheckInProject, CheckInRecord, TimeRecord, AchievementLog, Inspiration, Syncable, ShopItem } from '../types';
 import type { UserStats } from '../supabase/types';
-import { markSynced as markSyncedState, isItemDirty } from '../utils/syncState';
+import { markSynced as markSyncedState, isItemDirty, getDeletedIds, clearDeletedIds } from '../utils/syncState';
+import type { DeletedIdsCategory } from '../utils/syncState';
 
 interface SyncState {
   isOnline: boolean;
@@ -153,6 +154,32 @@ export function useSync(userId: string | null, options?: SyncOptions) {
       const syncStartTime = Date.now();
       const localData = loadLocalData();
 
+      // ─── 处理本地删除 → 云端同步删除 ─────────────────────
+      const CATEGORY_TO_TABLE: Record<DeletedIdsCategory, string> = {
+        todos: 'todos',
+        checkInProjects: 'check_in_projects',
+        checkInRecords: 'check_in_records',
+        timeRecords: 'time_records',
+        achievementLogs: 'achievement_logs',
+        inspirations: 'inspirations',
+        shopItems: 'shop_items',
+      };
+      const deletedIds = getDeletedIds();
+      let totalDeletedFromCloud = 0;
+      for (const [category, ids] of Object.entries(deletedIds) as [DeletedIdsCategory, string[]][]) {
+        if (ids.length > 0) {
+          const tableName = CATEGORY_TO_TABLE[category];
+          console.log(`[Sync] Deleting ${ids.length} ${category} from cloud (${tableName})`);
+          const { error, deletedCount } = await deleteBatch(tableName, ids);
+          if (error) {
+            console.error(`[Sync] Failed to delete ${category} from cloud:`, error.message);
+          } else {
+            totalDeletedFromCloud += deletedCount;
+            clearDeletedIds(category);
+          }
+        }
+      }
+
       // 统计需要同步的记录数（增量同步）
       const dirtyCounts = {
         todos: localData.todos.filter(t => isItemDirty(t)).length,
@@ -164,11 +191,11 @@ export function useSync(userId: string | null, options?: SyncOptions) {
         shopItems: localData.shopItems.filter(s => isItemDirty(s)).length,
       };
       const totalDirty = Object.values(dirtyCounts).reduce((a, b) => a + b, 0);
-      console.log('[Sync] Incremental sync:', { totalDirty, ...dirtyCounts });
+      console.log('[Sync] Incremental sync:', { totalDirty, ...dirtyCounts, deletedFromCloud: totalDeletedFromCloud });
 
-      // ✅ 没有脏数据需要同步时，跳过 fetchAll 避免触发 onDataFetched 导致循环
-      if (totalDirty === 0) {
-        console.log('[Sync] No dirty records, skipping sync');
+      // ✅ 没有脏数据也没有删除操作时，跳过
+      if (totalDirty === 0 && totalDeletedFromCloud === 0) {
+        console.log('[Sync] No dirty records or deletions, skipping sync');
         isSyncingRef.current = false;
         setSyncState(prev => ({
           ...prev,
@@ -207,11 +234,14 @@ export function useSync(userId: string | null, options?: SyncOptions) {
 
         const syncDuration = ((Date.now() - syncStartTime) / 1000).toFixed(1);
         isSyncingRef.current = false;
+        const parts: string[] = [];
+        if (totalDirty > 0) parts.push(`共同步 ${totalDirty} 条记录`);
+        if (totalDeletedFromCloud > 0) parts.push(`清理 ${totalDeletedFromCloud} 条已删除记录`);
         setSyncState(prev => ({
           ...prev,
           isSyncing: false,
           syncStatus: 'synced',
-          syncMessage: `同步成功，共同步 ${totalDirty} 条记录，耗时 ${syncDuration} 秒`,
+          syncMessage: `同步成功${parts.length > 0 ? '，' + parts.join('，') : ''}，耗时 ${syncDuration} 秒`,
           lastSync: syncedAtStr
         }));
 
@@ -414,10 +444,25 @@ function mergeData<T extends { id: string; synced_at?: string | null; syncedAt?:
     }
   });
 
+  // ✅ 过滤掉本地已删除的记录（防止在云端删除完成前被复活）
+  const allDeletedIds = new Set<string>();
+  try {
+    const deletedIds = getDeletedIds();
+    for (const ids of Object.values(deletedIds)) {
+      for (const id of ids as string[]) {
+        allDeletedIds.add(id);
+      }
+    }
+  } catch {}
+
+  const filtered = allDeletedIds.size > 0
+    ? merged.filter(item => !allDeletedIds.has(item.id))
+    : merged;
+
   // 按创建时间倒序排列（确保最新的记录在前面）
   const getCreatedAt = (item: T): number => {
     const val = (item as any).createdAt || (item as any).created_at;
     return val ? new Date(val).getTime() : 0;
   };
-  return merged.sort((a, b) => getCreatedAt(b) - getCreatedAt(a));
+  return filtered.sort((a, b) => getCreatedAt(b) - getCreatedAt(a));
 }

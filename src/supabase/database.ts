@@ -152,6 +152,32 @@ async function batchInsert<T extends { id: string }>(
   }
 }
 
+/**
+ * 批量删除云端的记录（用于本地删除后的同步）
+ * 每次最多删除 500 条，避免 URL 过长
+ */
+export async function deleteBatch(
+  tableName: string,
+  ids: string[],
+  batchSize: number = 500
+): Promise<{ error: Error | null; deletedCount: number }> {
+  try {
+    let totalDeleted = 0;
+    for (let i = 0; i < ids.length; i += batchSize) {
+      const batch = ids.slice(i, i + batchSize);
+      const { error } = await supabase
+        .from(tableName)
+        .delete()
+        .in('id', batch);
+      if (error) throw error;
+      totalDeleted += batch.length;
+    }
+    return { error: null, deletedCount: totalDeleted };
+  } catch (error) {
+    return { error: error as Error, deletedCount: 0 };
+  }
+}
+
 export const auth = {
   signUp: async (email: string, password: string) => {
     const { data, error } = await supabase.auth.signUp({ email, password });
@@ -340,6 +366,14 @@ export const achievementLog = {
       .insert({ ...camelToSnake(log), synced_at: new Date().toISOString() })
       .select();
     return { data: data?.[0] ? snakeToCamel(data[0]) : null, error };
+  },
+
+  delete: async (id: string) => {
+    const { error } = await supabase
+      .from('achievement_logs')
+      .delete()
+      .eq('id', id);
+    return { error };
   }
 };
 
@@ -556,6 +590,14 @@ export const shopItem = {
       .order('created_at', { ascending: false });
     return { data: data?.map(snakeToCamel), error };
   },
+
+  delete: async (id: string) => {
+    const { error } = await supabase
+      .from('shop_items')
+      .delete()
+      .eq('id', id);
+    return { error };
+  }
 };
 
 export const fetchAll = async (userId: string) => {
