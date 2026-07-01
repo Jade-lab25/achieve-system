@@ -146,6 +146,15 @@ export function useSync(userId: string | null, options?: SyncOptions) {
       console.log('[Sync] Already syncing, skipping duplicate call');
       return;
     }
+
+    // ✅ 关键修复：开始同步前，清除所有待处理的同步定时器
+    // 防止同步完成后仍有定时器触发，导致无限循环
+    if (syncTimeoutRef.current) {
+      clearTimeout(syncTimeoutRef.current);
+      syncTimeoutRef.current = null;
+      console.log('[Sync] Cleared pending sync timeout before starting');
+    }
+
     isSyncingRef.current = true;
 
     setSyncState(prev => ({ ...prev, isSyncing: true, syncStatus: 'syncing', syncMessage: '正在同步数据...' }));
