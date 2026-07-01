@@ -7,7 +7,10 @@ export interface SyncStateLike {
 
 export function isItemDirty<T extends SyncStateLike>(item: T | null | undefined): boolean {
   if (!item) return false;
-  return Boolean(item.is_dirty || item.isDirty || !item.synced_at || !item.syncedAt);
+  // ✅ 用 AND 而非 OR：只有 snake_case 和 camelCase 字段都缺失才算未同步
+  //    云端数据经 snakeToCamel 转换后只有 syncedAt（无 synced_at），OR 会误判为脏
+  const neverSynced = !item.synced_at && !item.syncedAt;
+  return Boolean(item.is_dirty || item.isDirty || neverSynced);
 }
 
 export function markDirty<T extends SyncStateLike>(item: T): T & { is_dirty: boolean; isDirty: boolean; synced_at: null; syncedAt: null } {

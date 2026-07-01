@@ -427,6 +427,19 @@ function mergeData<T extends { id: string; synced_at?: string | null; syncedAt?:
   };
   const isDirty = (item: T): boolean => isItemDirty(item);
 
+  // ✅ 确保记录同时拥有 synced_at 和 syncedAt，避免 isItemDirty 误判
+  //    云端数据经 snakeToCamel 转换后只有 syncedAt，缺少 synced_at
+  const normalizeSyncFields = (item: T): T => {
+    const a = item as any;
+    if (a.syncedAt && !a.synced_at) {
+      return { ...item, synced_at: a.syncedAt };
+    }
+    if (a.synced_at && !a.syncedAt) {
+      return { ...item, syncedAt: a.synced_at };
+    }
+    return item;
+  };
+
   // ✅ 云端优先：确保云端已同步的最新数据优先被采用
   [...remote, ...local].forEach(item => {
     if (seen.has(item.id)) return;
@@ -445,12 +458,12 @@ function mergeData<T extends { id: string; synced_at?: string | null; syncedAt?:
         const remoteTime = getSyncedAt(remoteItem);
         const localTime = getSyncedAt(localItem);
         const winner = localTime > remoteTime ? localItem : remoteItem;
-        // ❌ 不要用 markSynced！会覆盖 synced_at 破坏下次比较
-        merged.push(winner);
+        // ✅ 确保 winner 同时拥有两个字段
+        merged.push(normalizeSyncFields(winner));
       }
     } else if (remoteItem) {
-      // 只有云端的记录，直接用
-      merged.push(remoteItem);
+      // 只有云端的记录，直接用（补充缺失的 synced_at）
+      merged.push(normalizeSyncFields(remoteItem));
     } else if (localItem) {
       // 只有本地的新记录
       // ✅ fetchFromCloud 不应标记为已同步（数据尚未上传）
